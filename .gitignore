@@ -1,0 +1,9 @@
+.work/
+dist/
+node_modules/
+games/
+*.jks
+*.keystore
+.env
+.env.*
+local.properties
