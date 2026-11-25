@@ -28,7 +28,7 @@ test('workspace allows only exact declared platform modifications',t=>{
   const {src,cfg,work}=fixture(t),before=snapshot(src);
   const p=prepare(cfg,null,work),info=JSON.parse(fs.readFileSync(path.join(p.work,'build-info.json')));
   assert.deepEqual(snapshot(src),before);assert.deepEqual(info.sourceFiles,before);
-  assert.equal(info.schemaVersion,2);assert.equal(info.frameworkVersion,'0.3.1');
+  assert.equal(info.schemaVersion,2);assert.equal(info.frameworkVersion,'0.3.2');
   assert.equal(info.source.commit,null);assert.equal(info.adapter.id,'none');
   assert.deepEqual(info.changes.map(x=>x.path),['__publisher/runtime.js','index.html']);
   assert.equal(info.stagedFilesSha256,digestManifest(snapshot(p.web)));

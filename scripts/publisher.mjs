@@ -6,10 +6,11 @@ import { spawnSync } from 'node:child_process';
 import {snapshot,assertSnapshot,digestManifest,assertChanges,assertDisjoint,checkoutRoot,sha256} from './source-integrity.mjs';
 import {hasAdapter,planAdapter} from '../adapters/index.mjs';
 import {validateAndroid,planAndroid,applyAndroid} from '../platforms/android/native.mjs';
+import {assertReleaseIdentity,readApprovedLock,importApprovedLock} from '../platforms/android/quality.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const orientations = ['landscape', 'sensorLandscape', 'portrait', 'unspecified'];
 const capVersion = '8.0.0';
-const frameworkVersion = '0.3.1';
+const frameworkVersion = '0.3.2';
 export function validate(c) {
   if (!c || typeof c !== 'object' || Array.isArray(c)) throw Error('Expected JSON object');
   if (!/^[a-z][a-z0-9-]{0,49}$/.test(c.id ?? '')) throw Error('Invalid id');
@@ -21,6 +22,7 @@ export function validate(c) {
   if (typeof c.source !== 'string' || !c.source.trim()) throw Error('Missing source');
   if(c.adapter!==undefined&&(!hasAdapter(c.adapter)||(c.adapter!=='none'&&c.adapter!==c.id)))throw Error('Invalid adapter for '+c.id);
   validateAndroid(c);
+  assertReleaseIdentity(c);
   return c;
 }
 function files(dir, rel = '') {
@@ -124,7 +126,14 @@ function run(cmd,args,cwd){
 function build(p,kind){
   const {work,c}=p; const win=process.platform==='win32';
   const npm=win?'npm.cmd':'npm'; const npx=win?'npx.cmd':'npx';
-  run(npm,[fs.existsSync(path.join(work,'package-lock.json'))?'ci':'install','--no-audit','--no-fund'],work);
+  const lockPath=path.join(work,'package-lock.json');
+  if(process.env.H5_ANDROID_LOCKFILE)importApprovedLock(process.env.H5_ANDROID_LOCKFILE,lockPath,c.id);
+  if(!fs.existsSync(lockPath))run(npm,['install','--package-lock-only','--ignore-scripts','--no-audit','--no-fund'],work);
+  const lock=readApprovedLock(lockPath);
+  run(npm,['ci','--no-audit','--no-fund'],work);
+  if(readApprovedLock(lockPath).fileSha256!==lock.fileSha256)throw Error('npm ci changed approved lock');
+  const infoPath=path.join(work,'build-info.json'),info=JSON.parse(fs.readFileSync(infoPath,'utf8'));
+  info.dependencyLock=lock;fs.writeFileSync(infoPath,JSON.stringify(info,null,2)+'\n');
   run(npx,['--no-install','cap','add','android'],work);
   const android=path.join(work,'android');
   const g=path.join(android,'app','build.gradle'), m=path.join(android,'app','src','main','AndroidManifest.xml');
@@ -147,7 +156,7 @@ function build(p,kind){
   console.log('Artifact:',dest); if(kind!=='apk') console.log('UNSIGNED AAB — sign with your upload key before Play Console.');
 }
 function main(){const [cmd,config,source]=process.argv.slice(2);if(!['prepare','apk','aab','studio'].includes(cmd)||!config) throw Error('Usage: node scripts/publisher.mjs <prepare|apk|aab|studio> <config.json> [web-export-dir]'); const p=prepare(path.resolve(config),source);console.log('Staged:',p.web);if(cmd!=='prepare'){
-  if(cmd!=='studio'){const out=path.join(root,'dist',p.c.id,`${p.c.versionCode}-${p.c.versionName}`,p.c.id+(cmd==='apk'?'-debug.apk':'-unsigned.aab'));p.guard(path.dirname(out));fs.rmSync(out,{force:true});fs.rmSync(out+'.sha256',{force:true});}
+  if(cmd!=='studio'){const out=path.join(root,'dist',p.c.id,`${p.c.versionCode}-${p.c.versionName}`,p.c.id+(cmd==='apk'?'-debug.apk':'-unsigned.aab'));p.guard(path.dirname(out));fs.rmSync(out,{force:true});fs.rmSync(out+'.sha256',{force:true});if(cmd==='aab')fs.rmSync(out+'.validation.json',{force:true});}
   try{build(p,cmd);}finally{p.verifySource();}
 }}
 if(process.argv[1] && path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){try{main();}catch(e){console.error(e.message);process.exitCode=1;}}

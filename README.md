@@ -102,3 +102,7 @@ API 34 default, manually select API 29 or 36 from Actions workflow dispatch. Exa
 ## v0.3.1 — Android native and signing foundations
 
 Optional Android branding/splash and immersive native configuration, plus opt-in AAB signing with pinned upload certificate and unchanged-payload verification. Demo CI uses a disposable test key only. See `docs/ANDROID-RELEASE.md` for setup and limits. No automatic production upload.
+
+## v0.3.2 — Android release validation
+
+AAB quality checks use pinned Bundletool 1.18.3 and inspect actual packaged manifest and staged assets. See `platforms/android/quality-policy.json`, `release-registry.json`, and `docs/ANDROID-RELEASE.md`. For local validation: `node platforms/android/validate-aab.mjs <aab> <config.json> <verified-bundletool.jar>`. Upload signing requires `H5_BUNDLETOOL_JAR`. Set `H5_ANDROID_LOCKFILE` to the saved approved package-lock to avoid re-resolving dependencies; builds reject dependency drift. Release reports are not Google Play approval.

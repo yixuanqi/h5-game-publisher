@@ -112,6 +112,17 @@ jobs:
           fi
           test -f "$sdk/platforms/android-36/android.jar"
           test -x "$sdk/build-tools/36.0.0/aapt2"
+      - name: Install verified bundletool
+        shell: bash
+        run: |
+          set -euo pipefail
+          policy=platforms/android/quality-policy.json
+          url="$(node -p 'require("./"+process.argv[1]).bundletool.url' "$policy")"
+          hash="$(node -p 'require("./"+process.argv[1]).bundletool.sha256' "$policy")"
+          jar="$RUNNER_TEMP/bundletool.jar"
+          curl --fail --location --retry 3 --output "$jar" "$url"
+          printf '%s  %s\n' "$hash" "$jar" | sha256sum --check
+          echo "H5_BUNDLETOOL_JAR=$jar" >> "$GITHUB_ENV"
       - run: node scripts/publisher.mjs apk "configs/${{ matrix.game }}.json"
       - uses: actions/upload-artifact@v4
         with:
@@ -122,6 +133,14 @@ jobs:
             dist/${{ matrix.game }}/**/build-info.json
           if-no-files-found: error
       - run: node scripts/publisher.mjs aab "configs/${{ matrix.game }}.json"
+      - name: Validate unsigned AAB structure, manifest and runtime assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          game="${{ matrix.game }}"
+          aab="$(find "dist/$game" -name '*-unsigned.aab' -type f)"
+          node platforms/android/validate-aab.mjs "$aab" "configs/$game.json" "$H5_BUNDLETOOL_JAR"
+
       - name: Verify AAB signing with disposable test key (demo only)
         if: matrix.game == 'demo'
         shell: bash
@@ -145,12 +164,14 @@ jobs:
           node platforms/android/sign-aab.mjs "$unsigned"
           signed="${unsigned%-unsigned.aab}-test-signed.aab"
           test -s "$signed"
+          node platforms/android/validate-aab.mjs "$signed" configs/demo.json "$H5_BUNDLETOOL_JAR"
+
           if node platforms/android/sign-aab.mjs "$unsigned"; then
             echo 'Existing signed artifact was overwritten'; exit 1
           fi
           mkdir -p signing-report
-          cp "$signed.signing.json" signing-report/
-          rm -- "$signed" "$signed.sha256" "$signed.signing.json"
+          cp "$signed.signing.json" "$signed.validation.json" signing-report/
+          rm -- "$signed" "$signed.sha256" "$signed.signing.json" "$signed.validation.json"
       - name: Archive signing validation evidence
         if: matrix.game == 'demo'
         uses: actions/upload-artifact@v4
@@ -169,6 +190,7 @@ jobs:
             dist/${{ matrix.game }}/**/*.aab.sha256
             dist/${{ matrix.game }}/**/build-info.json
             dist/${{ matrix.game }}/**/package-lock.json
+            dist/${{ matrix.game }}/**/*-unsigned.aab.validation.json
           if-no-files-found: error
 
   android-emulator:

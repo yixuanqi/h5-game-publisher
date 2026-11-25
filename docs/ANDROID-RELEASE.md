@@ -16,3 +16,17 @@ Input hash checked against its .sha256. Upload mode additionally requires record
 
 ## Next steps
 Verify native runtime system bars and cutouts on emulator/physical device; adaptive icons and Curio artwork; bundletool validate and inspect release manifest; signing key management, stable dependency lock, release workflow/version gating and Play Console. APK/AAB existing gates unchanged. Signing report is not equivalent to final release approval.
+
+
+## V0.3.2 — AAB release quality gate
+
+Previous real results: run 45584017276, all three native builds passed; Demo disposable signing accepted correct certificate, rejected wrong pin and overwrite. Demo emulator passed. Ashen title wait and Curio native Back pause timed out, so full emulator acceptance remains red (7/9 jobs). No runtime test is removed or relaxed here.
+
+- Official bundletool 1.18.3 download with SHA256 pinned to the official GitHub release asset digest, then `validate` and `dump manifest --module=base`.
+- Parse the actual final manifest XML, not the source template. Check package, version, min/target SDK, MainActivity exported/orientation, no debuggable or testOnly. List actual permissions for review (not a privacy or Play policy certification).
+- Independently hash base/assets/public entries directly from the AAB. All staged game files must match; only two known empty Capacitor/Cordova generated files may be extra. Reject duplicate or unsafe ZIP paths.
+- Record AAB hash, manifest, SDK, permissions, dependency lock hash and resource verification in *.validation.json; run on all unsigned packages and Demo test-signed package. Upload-mode signing independently revalidates before and after signing; requires H5_BUNDLETOOL_JAR in addition to signing variables. Test-signed output is not for upload.
+- release-registry.json fixes existing app IDs, baseline version codes and names; upload mode requires registered non-demo game and higher code than last recorded upload (when present). lastUploadedVersionCode remains null until actual verified upload; does not query Play Console or guarantee availability of version code. Same version can be rebuilt for tests. New game IDs can build locally but require registry enrollment for upload.
+- npm dependency lock gate: normalized SHA256 of all three lock files in run 45584017276 (99 packages entries including root) was identical. The root package name is normalized, all other lock fields including integrity are retained. Before npm ci, use existing lock or H5_ANDROID_LOCKFILE (approved saved package-lock.json from any of the three artifacts), otherwise resolve a lock-only and reject drift rather than silently upgrading. This pins accepted dependency resolution, but does not yet vendor the lock or pin full Gradle/transitive/OS toolchain. Archive the exact generated lock with output; use H5_ANDROID_LOCKFILE for reproducibility when registry changes. A committed canonical lock and Gradle locking remain next steps.
+- SDK floor 36 and maximum minSdk 29 are project policy (not a claim of current store requirements). Review when updating target policy.
+- Source isolation and full emulator regression remain independent and unchanged. No game repository write, real upload key use, or publication.

@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "games": {
+    "demo": {
+      "appId": "io.github.yixuanqi.h5demo",
+      "baselineVersionCode": 1,
+      "baselineVersionName": "0.1.0",
+      "lastUploadedVersionCode": null,
+      "allowUpload": false
+    },
+    "ashen-bell-vow": {
+      "appId": "io.github.yixuanqi.ashenbellvow",
+      "baselineVersionCode": 450700,
+      "baselineVersionName": "45.7.0",
+      "lastUploadedVersionCode": null,
+      "allowUpload": true
+    },
+    "curio-box": {
+      "appId": "io.github.yixuanqi.curiobox",
+      "baselineVersionCode": 80200,
+      "baselineVersionName": "8.2.0",
+      "lastUploadedVersionCode": null,
+      "allowUpload": true
+    }
+  }
+}

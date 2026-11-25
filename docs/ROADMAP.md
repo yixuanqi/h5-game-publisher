@@ -40,3 +40,8 @@ Web/itch.io 构建、iOS（需要 macOS/Xcode 与苹果账号）、Windows/Steam
 - [x] Configurable native immersion (demo opt-in), icon and splash branding (demo/Ashen), certificate-pinned offline signing tool.
 - [ ] CI build and disposable test-signing verification; existing emulator gate must remain unchanged. Real-game immersion, adaptive icons, Curio artwork, bundletool, release approval and stable lock remain outstanding.
 - [ ] Ashen intro low-FPS issue remains game-side investigation; 1fcfb0f is 8/9, not accepted full green.
+
+## v0.3.2 — Release quality gate
+- [x] Pin official bundletool and validate actual AAB structure, manifest identity/SDK/flags/orientation, bundled web asset hashes and accepted npm lock digest. Registry records immutable package identity and version floors.
+- [ ] Full CI evidence for three unsigned bundles and Demo signed bundle. Canonical committed dependency lock, full Gradle locking and Play version history sync remain pending.
+- [ ] Existing two real-game emulator issues must be resolved separately; no production release authorization.
