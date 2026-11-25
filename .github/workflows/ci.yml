@@ -14,6 +14,15 @@ on:
         type: choice
         options: ['default', 'google_apis']
         default: 'default'
+      android_gpu:
+        description: Emulator software graphics backend
+        type: choice
+        options: ['swangle', 'software', 'swiftshader', 'lavapipe']
+        default: 'swangle'
+      reload_stress:
+        description: Extra in-page WebView reload stress (separate from normal boot/relaunch)
+        type: boolean
+        default: false
 permissions:
   contents: read
 jobs:
@@ -152,6 +161,8 @@ jobs:
           printf '%s\n' "$(dirname "$manager")" "$sdk/platform-tools" "$sdk/emulator" >> "$GITHUB_PATH"
           mkdir -p emulator-report
       - name: Install and exercise exact CI APK
+        env:
+          H5_RELOAD_STRESS: ${{ inputs.reload_stress || false }}
         uses: reactivecircus/android-emulator-runner@v2.35.0
         with:
           api-level: ${{ inputs.android_api || '34' }}
@@ -159,7 +170,7 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none
+          emulator-options: -no-window -gpu ${{ inputs.android_gpu || 'swangle' }} -feature -Vulkan -noaudio -no-boot-anim -no-snapshot -camera-back none
           script: node scripts/emulator-smoke.mjs configs/${{ matrix.game }}.json emulator-input emulator-report
       - name: Capture host diagnostics (including emulator termination)
         if: always()
@@ -173,6 +184,10 @@ jobs:
             lscpu
             cat /proc/pressure/memory || true
             cat /sys/fs/cgroup/memory.events || true
+            emulator -version || true
+            sudo journalctl -k --no-pager -n 100 || true
+            sudo journalctl --no-pager -n 100 | grep -Ei 'apport|qemu|segfault|oom|core dump' || true
+            sudo ls -lh /var/crash || true
             ps -eo pid,comm,rss,%cpu --sort=-rss | head -n 25 || true
             timeout 10s adb devices -l || true
           } > emulator-report/host-diagnostics.txt 2>&1

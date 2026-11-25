@@ -34,3 +34,18 @@ export function classifyFaults(log,pkg){
   return log.split(/\r?\n/).filter(l=>l.includes('Process: '+pkg+',')||l.includes('ANR in '+pkg+' ')||l.includes('ANR in '+pkg+' (')||l.includes('>>> '+pkg+' <<<')||(l.includes('Killing ')&&l.includes(':'+pkg+'/')&&l.includes('depends on provider')));
 }
 export const visible=(id)=>'(()=>{const e=document.getElementById('+JSON.stringify(id)+');if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return !e.disabled&&r.width>0&&r.height>0&&s.visibility!=="hidden"&&s.display!=="none"&&e.getClientRects().length>0&&!!e.closest("body")&&(!e.closest(".hidden"));})()';
+
+export function auditResources(snapshots,requests,id){
+  const entry=id==='demo'?'/game.js':'/src/main.js';
+  const local=u=>/^(https?:\/\/localhost(?:[:/]|$)|data:|blob:|about:)/i.test(u);
+  if(!snapshots.length)throw Error('No resource snapshots');
+  for(const s of snapshots){
+    if(!/^https?:\/\/localhost(?:[:/]|$)/i.test(s.url)||!Array.isArray(s.resources))throw Error('Missing local document evidence: '+s.phase);
+    const paths=s.resources.filter(u=>/^https?:\/\/localhost(?:[:/]|$)/i.test(u)).map(u=>new URL(u).pathname);
+    for(const required of ['/__publisher/runtime.js',entry])if(!paths.includes(required))throw Error('Missing resource '+required+' in '+s.phase);
+  }
+  const urls=[...snapshots.flatMap(s=>[s.url,...s.resources]),...requests];
+  const external=[...new Set(urls.filter(u=>!local(u)))];
+  if(external.length)throw Error('External WebView resources: '+external.join(', '));
+  return {snapshots:snapshots.length,observedUrls:[...new Set(urls)].length,cdpRequests:requests.length};
+}

@@ -3,14 +3,14 @@ import path from 'node:path';
 import {spawn,spawnSync} from 'node:child_process';
 import {setTimeout as sleep} from 'node:timers/promises';
 import assert from 'node:assert/strict';
-import {findApk,verifyArtifact,verifyBadging,classifyFaults,visible} from './emulator-lib.mjs';
+import {findApk,verifyArtifact,verifyBadging,classifyFaults,visible,auditResources} from './emulator-lib.mjs';
 const [config,artifactDir,reportDir]=process.argv.slice(2);
 if(!config||!artifactDir||!reportDir)throw Error('Usage: node scripts/emulator-smoke.mjs <config> <artifact-dir> <report-dir>');
 const c=JSON.parse(fs.readFileSync(config,'utf8')), pkg=c.appId;
 if(!/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(pkg))throw Error('Invalid appId');
 const out=path.resolve(reportDir);fs.mkdirSync(out,{recursive:true});
-const report={game:c.id,appId:pkg,version:c.versionName,run:process.env.GITHUB_RUN_ID||null,status:'failed',tests:[],limitations:['Software GPU; no audio output; no real-device performance verdict','Storage probe checks committed data after normal background; not actual game-save progression or sub-second crash durability','Single-touch start/menu interaction; no full combat or multitouch assertion']};
-const messages=[], faults=[], network=[];
+const report={game:c.id,appId:pkg,version:c.versionName,run:process.env.GITHUB_RUN_ID||null,status:'failed',tests:[],limitations:['Software GPU; no audio output; no real-device performance verdict','Storage probe checks committed data after normal background; not actual game-save progression or sub-second crash durability','Network audit uses Resource Timing snapshots and observed CDP requests; not a complete packet capture','Explicit in-page reload stress is opt-in; normal runtime gate uses cold launch and process relaunch','Single-touch start/menu interaction; no full combat or multitouch assertion']};
+const messages=[], faults=[], network=[], resourceSnapshots=[];
 let cdp,port,offline=false,installed=false,serial=null,logStream=null;
 const diagnostics=[];
 function record(message){const entry={at:new Date().toISOString(),message:String(message)};diagnostics.push(entry);fs.appendFileSync(path.join(out,'diagnostics.jsonl'),JSON.stringify(entry)+'\n');}
@@ -63,6 +63,15 @@ async function tap(id){
   const point=await cdp.eval('(()=>{const r=document.getElementById('+JSON.stringify(id)+').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()');
   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[point]});await sleep(90);await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
 }
+async function captureResources(phase){
+  const snapshot=await cdp.eval('({url:location.href,resources:performance.getEntriesByType("resource").map(r=>r.name),timeOrigin:performance.timeOrigin})');
+  resourceSnapshots.push({phase,...snapshot});
+  fs.writeFileSync(path.join(out,'resource-snapshots.json'),JSON.stringify(resourceSnapshots,null,2));
+  // A real boot must include the runtime and the game entry, not just a favicon or an empty page.
+  auditResources([snapshot],[],c.id);
+  record(phase+' resource audit: '+snapshot.resources.length+' entries');
+  return snapshot;
+}
 const states=c.id==='ashen-bell-vow'?{boot:'window.__ABV_BOOTED__===true',ready:'document.body.dataset.gameState==="title"',start:'btn-start',play:'document.body.dataset.gameState==="playing"',pause:'document.body.dataset.gameState==="modal"&&!document.querySelector("#pause-modal").classList.contains("hidden")',resume:'btn-pause-resume'}:c.id==='curio-box'?{boot:'!!window.CB?.game?.map',ready:'window.CB?.game?.titleOpen&&!window.CB.game.introActive',start:'btnTitleStart',play:'window.CB?.game?.run.phase==="playing"&&!window.CB.game.titleOpen&&!window.CB.game.paused',pause:'window.CB?.game?.paused===true',resume:'btnPauseResume'}:null;
 try{
   await step('isolated emulator device only',()=>{
@@ -97,11 +106,9 @@ try{
     await wait(states?.boot||'document.readyState==="complete"&&!!document.querySelector("#tap")','game boot',90000);
     await wait('innerWidth>innerHeight&&innerHeight>0','landscape viewport');
     capture('01-launch');
-    // Observe a full local resource load with CDP already attached; first launch above is independently checked.
-    const timeOrigin=await cdp.eval('performance.timeOrigin');
-    await cdp.send('Page.reload',{ignoreCache:true});
-    await wait('performance.timeOrigin!=='+timeOrigin,'new document after reload',90000);
-    await wait(states?.boot||'document.readyState==="complete"&&!!document.querySelector("#tap")','reload boot',90000);
+    // Capture the real cold launch, without restarting the Canvas during its opening animation.
+    await captureResources('cold-launch');
+    record('first game boot and landscape verified');
     return await cdp.eval('({url:location.href,width:innerWidth,height:innerHeight,dpr:devicePixelRatio})');
   });
   if(states){
@@ -159,21 +166,34 @@ try{
     assert.ok(after.nativePauses>before.nativePauses,'storage background event missing');
     assert.ok(after.nativeResumes>before.nativeResumes,'storage foreground event missing');
     assert.equal(await cdp.eval(read),value,'pre-stop readback failed');
+    await captureResources('before-force-stop');
     await detach();shell('am','force-stop',pkg);launch();cdp=await attach();
     await wait('window.H5Publisher?.isNative()===true','relaunch native bridge',90000);
     await wait(states?.boot||'document.readyState==="complete"&&!!document.querySelector("#score")','relaunch boot',90000);
     assert.equal(await cdp.eval('location.origin'),origin,'storage origin changed');
     assert.equal(await cdp.eval(read),value,'committed storage lost after force-stop');
     if(!states)assert.equal(await cdp.eval('Number(document.querySelector("#score").textContent)'),score,'demo score changed after relaunch');
+    await captureResources('process-relaunch');
     capture('07-relaunch');
     return {origin,backgroundSettleMs:10000,score};
   });
+  if(process.env.H5_RELOAD_STRESS==='true'){
+    await step('optional explicit WebView reload stress',async()=>{
+      const timeOrigin=await cdp.eval('performance.timeOrigin');
+      await cdp.send('Page.reload',{ignoreCache:true});
+      await wait('performance.timeOrigin!=='+timeOrigin,'new document after reload',90000);
+      await wait(states?.boot||'document.readyState==="complete"&&!!document.querySelector("#tap")','reload boot',90000);
+      await captureResources('explicit-reload');
+      capture('08-explicit-reload');
+    });
+  }
   await step('runtime fault and network audit',async()=>{
     const log=adb('logcat','-d','-v','threadtime');fs.writeFileSync(path.join(out,'logcat.txt'),log);
     assert.deepEqual(classifyFaults(log,pkg),[]);
     assert.deepEqual(faults,[]);
-    assert.deepEqual(network.filter(u=>!(/^(https?:\/\/localhost(?:[:/]|$)|data:|blob:|about:)/i.test(u))),[]);
-    assert.ok(network.length>0,'expected observed WebView requests');
+    assert.ok(resourceSnapshots.some(x=>x.phase==='cold-launch'),'missing cold launch evidence');
+    assert.ok(resourceSnapshots.some(x=>x.phase==='process-relaunch'),'missing process relaunch evidence');
+    return auditResources(resourceSnapshots,network,c.id);
   });
   report.status='passed';
 }catch(e){report.error=String(e.stack||e);report.failureCategory=e.infrastructure?'emulator-disconnected':'test-failure';console.error(report.error);process.exitCode=1;record(report.error);if(deviceAlive()){try{capture('99-failure');}catch(e){record(e.message);}}}

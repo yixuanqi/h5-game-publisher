@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {findApk,verifyArtifact,verifyBadging,classifyFaults} from '../scripts/emulator-lib.mjs';
+import {findApk,verifyArtifact,verifyBadging,classifyFaults,auditResources} from '../scripts/emulator-lib.mjs';
 const c={id:'demo',appId:'io.github.yixuanqi.h5demo',versionCode:1,versionName:'0.1.0'};
 test('emulator consumes a unique APK with matching checksum and provenance',t=>{
   const d=fs.mkdtempSync(path.join(os.tmpdir(),'apk-check-'));t.after(()=>fs.rmSync(d,{recursive:true,force:true}));
@@ -29,4 +29,14 @@ test('dependent-provider process death is an app failure, intentional force-stop
   const p=c.appId;
   assert.equal(classifyFaults('ActivityManager: Killing 2414:'+p+'/u0a192 (adj 0): depends on provider com.google.android.gms/.fonts.provider.FontsProvider',p).length,1);
   assert.deepEqual(classifyFaults('ActivityManager: Killing 2414:'+p+'/u0a192 (adj 0): stop '+p,p),[]);
+});
+
+test('resource audit checks every cold/relaunch document without forced reload',()=>{
+  const first={phase:'cold-launch',url:'https://localhost/',resources:['https://localhost/__publisher/runtime.js','https://localhost/src/main.js?v=45.7']};
+  const second={...first,phase:'process-relaunch'};
+  assert.equal(auditResources([first,second],[],'ashen-bell-vow').snapshots,2);
+  assert.throws(()=>auditResources([first,{...second,resources:[]}],[],'ashen-bell-vow'),/Missing resource/);
+  assert.throws(()=>auditResources([first,second],['https://cdn.example/a.js'],'ashen-bell-vow'),/External/);
+  assert.throws(()=>auditResources([{...first,resources:[...first.resources,'https://cdn.example/a.js']}],[],'ashen-bell-vow'),/External/);
+  assert.throws(()=>auditResources([],[],'demo'),/No resource snapshots/);
 });
