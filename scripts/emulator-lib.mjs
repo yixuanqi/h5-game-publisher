@@ -64,3 +64,22 @@ export function lifecycleRoundTripComplete(before,after){
   return ['nativePauses','nativeResumes','pauses','resumes'].every(k=>
     Number.isSafeInteger(before[k])&&Number.isSafeInteger(after[k])&&before[k]>=0&&after[k]>before[k]);
 }
+
+/** Distinguish an OS/launcher ANR from an app-specific crash or ordinary GPU warning.
+ * A contaminated emulator is not acceptable evidence of gameplay, even when CDP responds.
+ */
+export function systemAnrs(log,homePackage='com.android.launcher3'){
+  const system=new Set(['system','system_server','com.android.systemui','com.android.launcher3','com.google.android.apps.nexuslauncher',homePackage]);
+  return log.split(/\r?\n/).filter(line=>{
+    const activity=line.match(/\bActivityManager\s*:\s*ANR in ([\w.]+)(?:\s|$)/);
+    const event=line.match(/\bam_anr\s*:\s*\[\s*\d+\s*,\s*\d+\s*,\s*([\w.]+)\s*,/);
+    return system.has(activity?.[1]??event?.[1]);
+  });
+}
+export function homeWindowFocused(windowDump,activityDump,homePackage){
+  if(!/^[\w.]+$/.test(homePackage))return false;
+  const focus=windowDump.split(/\r?\n/).filter(l=>l.includes('mCurrentFocus='));
+  const resumed=activityDump.split(/\r?\n/).filter(l=>/mResumedActivity|topResumedActivity/.test(l));
+  const isHome=l=>l.includes(' '+homePackage+'/')&&!/Application Not Responding|ErrorDialog/i.test(l);
+  return focus.some(isHome)&&resumed.some(isHome);
+}

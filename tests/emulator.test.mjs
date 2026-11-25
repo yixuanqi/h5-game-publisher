@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {findApk,verifyArtifact,verifyBadging,classifyFaults,auditResources,countNativePause,lifecycleRoundTripComplete} from '../scripts/emulator-lib.mjs';
+import {findApk,verifyArtifact,verifyBadging,classifyFaults,auditResources,countNativePause,lifecycleRoundTripComplete,systemAnrs,homeWindowFocused} from '../scripts/emulator-lib.mjs';
 const c={id:'demo',appId:'io.github.yixuanqi.h5demo',versionCode:1,versionName:'0.1.0'};
 test('emulator consumes a unique APK with matching checksum and provenance',t=>{
   const d=fs.mkdtempSync(path.join(os.tmpdir(),'apk-check-'));t.after(()=>fs.rmSync(d,{recursive:true,force:true}));
@@ -65,4 +65,28 @@ test('native pause synchronization only counts exact AppPlugin pause lines for c
   assert.equal(countNativePause(log,'9999'),1);
   assert.equal(countNativePause(log,'2115'),0);
   assert.throws(()=>countNativePause(log,'2114 9999'),/numeric/);
+});
+
+test('system and launcher ANRs from 45609733049 are infrastructure faults, not app exceptions',()=>{
+  const log=[
+    '11-25 12:08:30.045 509 1995 I am_anr  : [0,1050,com.android.launcher3,885767749,Input dispatching timed out]',
+    '11-25 12:08:43.695 509 1995 E ActivityManager: ANR in com.android.launcher3 (com.android.launcher3/.uioverrides.QuickstepLauncher)',
+    '11-25 12:08:58.871 509 2605 E ActivityManager: ANR in system',
+    '11-25 12:08:59.000 509 2605 E ActivityManager: ANR in io.github.yixuanqi.ashenbellvow (activity)',
+    '11-25 12:09:00.000 2476 2490 I OpenGLRenderer: Davey! duration=3709ms',
+    '11-25 12:09:01.000 509 2605 E ActivityManager: ANR in system.fake',
+  ].join('\n');
+  assert.equal(systemAnrs(log).length,3);
+  assert.equal(systemAnrs('ActivityManager: ANR in com.example.home (activity)','com.example.home').length,1);
+  assert.deepEqual(systemAnrs('ActivityManager: ANR in io.github.yixuanqi.ashenbellvow (activity)'),[]);
+});
+test('boot requires focused and resumed home, not merely a running device',()=>{
+  const home='com.android.launcher3';
+  const focused='mCurrentFocus=Window{abc u0 com.android.launcher3/.QuickstepLauncher}';
+  const resumed='topResumedActivity=ActivityRecord{abc u0 com.android.launcher3/.QuickstepLauncher t1}';
+  assert.equal(homeWindowFocused(focused,resumed,home),true);
+  assert.equal(homeWindowFocused('mCurrentFocus=null',resumed,home),false);
+  assert.equal(homeWindowFocused('mCurrentFocus=Window{abc u0 Application Not Responding: com.android.launcher3}',resumed,home),false);
+  assert.equal(homeWindowFocused(focused,'topResumedActivity=null',home),false);
+  assert.equal(homeWindowFocused(focused,resumed,'com.other.home'),false);
 });

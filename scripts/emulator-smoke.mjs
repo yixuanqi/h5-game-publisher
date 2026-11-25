@@ -4,15 +4,15 @@ import {spawn,spawnSync} from 'node:child_process';
 import {setTimeout as sleep} from 'node:timers/promises';
 import assert from 'node:assert/strict';
 import {upgradeConfig,assertUpgradePair} from '../platforms/android/upgrade-config.mjs';
-import {findApk,verifyArtifact,verifyBadging,classifyFaults,visible,auditResources,countNativePause,lifecycleRoundTripComplete} from './emulator-lib.mjs';
+import {findApk,verifyArtifact,verifyBadging,classifyFaults,visible,auditResources,countNativePause,lifecycleRoundTripComplete,systemAnrs,homeWindowFocused} from './emulator-lib.mjs';
 const [config,artifactDir,reportDir]=process.argv.slice(2);
 if(!config||!artifactDir||!reportDir)throw Error('Usage: node scripts/emulator-smoke.mjs <config> <artifact-dir> <report-dir>');
 const c=JSON.parse(fs.readFileSync(config,'utf8')), pkg=c.appId;
 if(!/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(pkg))throw Error('Invalid appId');
 const out=path.resolve(reportDir);fs.mkdirSync(out,{recursive:true});
-const report={game:c.id,appId:pkg,version:c.versionName,run:process.env.GITHUB_RUN_ID||null,status:'failed',tests:[],limitations:['Software GPU; no audio output; no real-device performance verdict','Storage and same-source version bump upgrade test use a committed probe; not actual game-save migration or sub-second crash durability','Network audit uses Resource Timing snapshots and observed CDP requests; not a complete packet capture','Explicit in-page reload stress is opt-in; normal runtime gate uses cold launch and process relaunch','Single-touch start/menu interaction; no full combat or multitouch assertion']};
+const report={game:c.id,appId:pkg,version:c.versionName,run:process.env.GITHUB_RUN_ID||null,status:'failed',tests:[],limitations:['Software GPU, reduced physical display 480x854 at 160dpi (approximately same logical viewport); no audio output; no real-device performance verdict','Storage and same-source version bump upgrade test use a committed probe; not actual game-save migration or sub-second crash durability','Network audit uses Resource Timing snapshots and observed CDP requests; not a complete packet capture','Explicit in-page reload stress is opt-in; normal runtime gate uses cold launch and process relaunch','Single-touch start/menu interaction; no full combat or multitouch assertion']};
 const messages=[], faults=[], network=[], resourceSnapshots=[];
-let cdp,port,offline=false,installed=false,serial=null,logStream=null,baseInfo=null,baseSigner=null;
+let cdp,port,offline=false,installed=false,serial=null,logStream=null,baseInfo=null,baseSigner=null,homePackage=null,lastSystemCheck=0;
 const diagnostics=[];
 function record(message){const entry={at:new Date().toISOString(),message:String(message)};diagnostics.push(entry);fs.appendFileSync(path.join(out,'diagnostics.jsonl'),JSON.stringify(entry)+'\n');}
 function cmd(exe,args,opts={}){
@@ -22,11 +22,24 @@ function cmd(exe,args,opts={}){
 }
 const adb=(...args)=>cmd('adb',serial?['-s',serial,...args]:args);
 const shell=(...args)=>adb('shell',...args).trim();
+function failOnSystemAnr(log,phase){
+  const anrs=systemAnrs(log,homePackage??'com.android.launcher3');
+  if(!anrs.length)return;
+  report.systemAnr={phase,lines:anrs.slice(-20)};
+  fs.writeFileSync(path.join(out,'system-anr.json'),JSON.stringify(report.systemAnr,null,2));
+  const failure=Error('Android system/launcher ANR during '+phase+': '+anrs[0]);
+  failure.infrastructure=true;failure.failureCategory='emulator-system-anr';throw failure;
+}
+function checkLiveSystem(phase,force=false){
+  if(!logStream)return;
+  const now=Date.now();if(!force&&now-lastSystemCheck<2000)return;lastSystemCheck=now;
+  failOnSystemAnr(fs.readFileSync(path.join(out,'logcat-stream.txt'),'utf8'),phase);
+}
 function deviceAlive(){if(!serial)return false;try{return cmd('adb',['-s',serial,'get-state'],{timeout:5000}).trim()==='device';}catch(e){record(e.message);return false;}}
 function startLogcat(){const fd=fs.openSync(path.join(out,'logcat-stream.txt'),'a');try{logStream=spawn('adb',['-s',serial,'logcat','-b','all','-v','threadtime'],{stdio:['ignore',fd,fd]});logStream.on('error',e=>record('logcat stream error: '+e.message));logStream.on('exit',(code,signal)=>record('logcat stream exit: '+code+' '+signal));}finally{fs.closeSync(fd);}}
 const capture=(name)=>{const b=cmd('adb',['exec-out','screencap','-p'],{binary:true});assert.equal(b.subarray(0,8).toString('hex'),'89504e470d0a1a0a');fs.writeFileSync(path.join(out,name+'.png'),b);};
 async function step(name,fn){const start=Date.now();try{const detail=await fn();report.tests.push({name,status:'passed',ms:Date.now()-start,detail:detail??null});console.log('PASS '+name);}catch(e){report.tests.push({name,status:'failed',ms:Date.now()-start,error:String(e.message||e)});throw e;}finally{fs.writeFileSync(path.join(out,'test-results.json'),JSON.stringify(report,null,2));}}
-async function eventually(fn,desc,ms=60000){let last;const end=Date.now()+ms;while(Date.now()<end){try{const v=await fn();if(v)return v;}catch(e){last=e;if(e.infrastructure)throw e;}await sleep(350);}throw Error('Timeout: '+desc+(last?' ('+last.message+')':''));}
+async function eventually(fn,desc,ms=60000){let last;const end=Date.now()+ms;while(Date.now()<end){checkLiveSystem(desc);try{const v=await fn();if(v)return v;}catch(e){last=e;if(e.infrastructure)throw e;}await sleep(350);}throw Error('Timeout: '+desc+(last?' ('+last.message+')':''));}
 class CDP{
   constructor(ws){this.ws=ws;this.seq=0;this.pending=new Map();
     ws.addEventListener('message',e=>{let m;try{m=JSON.parse(e.data);}catch{return;}
@@ -108,15 +121,36 @@ async function captureResources(phase){
 }
 const states=c.id==='ashen-bell-vow'?{boot:'window.__ABV_BOOTED__===true',ready:'document.body.dataset.gameState==="title"',start:'btn-start',play:'document.body.dataset.gameState==="playing"',pause:'document.body.dataset.gameState==="modal"&&!document.querySelector("#pause-modal").classList.contains("hidden")',resume:'btn-pause-resume'}:c.id==='curio-box'?{boot:'!!window.CB?.game?.map',ready:'window.CB?.game?.titleOpen&&!window.CB.game.introActive',start:'btnTitleStart',play:'window.CB?.game?.run.phase==="playing"&&!window.CB.game.titleOpen&&!window.CB.game.paused',pause:'window.CB?.game?.paused===true',resume:'btnPauseResume'}:null;
 try{
-  await step('isolated emulator device only',()=>{
+  await step('isolated emulator device only',async()=>{
     const devices=cmd('adb',['devices']).split(/\r?\n/).slice(1).filter(l=>l.trim());
     assert.equal(devices.length,1,'one dedicated emulator required');
     const match=devices[0].match(/^(emulator-\d+)\s+device\s*$/);assert.ok(match,'refusing physical or unavailable device');serial=match[1];
     assert.equal(shell('getprop','ro.kernel.qemu'),'1');
-    // Limit software GPU workload; this is a runtime smoke device, not a performance benchmark.
-    shell('wm','size','720x1280');shell('wm','density','240');
+    // Boot completion is not a stable desktop. Do not resize a transitioning home window
+    // or start the game while Launcher/System UI is still initializing.
+    const home=shell('cmd','package','resolve-activity','--brief','-a','android.intent.action.MAIN','-c','android.intent.category.HOME').split(/\r?\n/).reverse().find(l=>/^[\w.]+\/[\w.$]+$/.test(l.trim()));
+    assert.ok(home,'Cannot resolve emulator home activity');homePackage=home.trim().split('/')[0];
+    const bootLog=phase=>{
+      const log=adb('logcat','-b','all','-d','-v','threadtime');
+      fs.writeFileSync(path.join(out,'boot-'+phase+'.txt'),log);
+      failOnSystemAnr(log,'boot '+phase);
+    };
+    async function stableHome(phase){
+      let consecutive=0;
+      await eventually(()=>{
+        const ready=shell('getprop','sys.boot_completed')==='1'&&shell('getprop','init.svc.bootanim')==='stopped'&&homeWindowFocused(shell('dumpsys','window'),shell('dumpsys','activity','activities'),homePackage);
+        consecutive=ready?consecutive+1:0;return consecutive>=3;
+      },'stable Android home '+phase,60000);
+      bootLog(phase);record('stable Android home '+phase);
+    }
+    bootLog('initial');
+    await stableHome('before-display');
+    // 44% of the prior pixel count, nearly identical density-independent dimensions.
+    // No game canvas/animation modifications, no intro skip or longer menu timeout.
+    shell('wm','size','480x854');shell('wm','density','160');
+    await stableHome('after-display');
     fs.writeFileSync(path.join(out,'webview-provider.txt'),shell('dumpsys','webviewupdate'));
-    return {serial,display:shell('wm','size'),density:shell('wm','density')};
+    return {serial,homePackage,display:shell('wm','size'),density:shell('wm','density'),stableHome:true};
   });
   await step('artifact integrity, APK manifest and signature',()=>{
     const apk=findApk(artifactDir,c.id);const {hash,info}=verifyArtifact(apk,c);report.apkSha256=hash;baseInfo=info;
@@ -126,7 +160,8 @@ try{
     const signature=cmd(path.join(bt,'apksigner'),['verify','--verbose','--print-certs',apk]);
     fs.writeFileSync(path.join(out,'signature.txt'),signature);
     baseSigner=signature.match(/Signer #1 certificate SHA-256 digest:\s*([a-fA-F0-9]{64})/)?.[1]?.toLowerCase();assert.ok(baseSigner,'missing APK signer digest');
-    adb('logcat','-c');startLogcat();assert.match(adb('install',apk),/Success/);installed=true;return hash;
+    failOnSystemAnr(adb('logcat','-b','all','-d','-v','threadtime'),'before APK install');
+    adb('logcat','-b','all','-c');startLogcat();assert.match(adb('install',apk),/Success/);installed=true;return hash;
   });
   await step('disable Wi-Fi and cellular before first launch',()=>{
     report.api=shell('getprop','ro.build.version.sdk');
@@ -137,7 +172,7 @@ try{
     report.networkState=shell('dumpsys','connectivity');return {api:report.api,airplane:true,wifi:false};
   });
   await step('launch installed APK and native WebView',async()=>{
-    record('before first launch');launch();record('activity launched');cdp=await attach();record('WebView CDP attached');
+    checkLiveSystem('before first launch',true);record('before first launch');launch();record('activity launched');cdp=await attach();record('WebView CDP attached');
     await wait('window.H5Publisher?.isNative()===true','Capacitor native bridge');record('native bridge ready');
     await wait(states?.boot||'document.readyState==="complete"&&!!document.querySelector("#tap")','game boot',90000);
     await wait('innerWidth>innerHeight&&innerHeight>0','landscape viewport');
@@ -232,13 +267,14 @@ try{
   await step('runtime fault and network audit',async()=>{
     const log=adb('logcat','-d','-v','threadtime');fs.writeFileSync(path.join(out,'logcat.txt'),log);
     assert.deepEqual(classifyFaults(log,pkg),[]);
+    checkLiveSystem('final runtime audit',true);
     assert.deepEqual(faults,[]);
     assert.ok(resourceSnapshots.some(x=>x.phase==='cold-launch'),'missing cold launch evidence');
     assert.ok(resourceSnapshots.some(x=>x.phase==='process-relaunch'),'missing process relaunch evidence');
     return auditResources(resourceSnapshots,network,c.id);
   });
   report.status='passed';
-}catch(e){report.error=String(e.stack||e);report.failureCategory=e.infrastructure?'emulator-disconnected':'test-failure';console.error(report.error);process.exitCode=1;record(report.error);if(deviceAlive()){try{capture('99-failure');}catch(e){record(e.message);}}}
+}catch(e){report.error=String(e.stack||e);report.failureCategory=e.failureCategory??(e.infrastructure?'emulator-disconnected':'test-failure');console.error(report.error);process.exitCode=1;record(report.error);if(deviceAlive()){try{capture('99-failure');}catch(e){record(e.message);}}}
 finally{
   const alive=deviceAlive();report.deviceConnectedAtCleanup=alive;
   if(alive){try{fs.writeFileSync(path.join(out,'logcat.txt'),cmd('adb',['-s',serial,'logcat','-d','-v','threadtime'],{timeout:10000}));}catch(e){record(e.message);}}
