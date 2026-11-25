@@ -28,6 +28,10 @@
 Web/itch.io 构建、iOS（需要 macOS/Xcode 与苹果账号）、Windows/Steam（独立封装与审核）、其他国内平台按需求实现，不在 v0.1 假设已经支持。
 
 ## v0.2.1 — Android emulator gate
-- [ ] API 34 exact APK install/start/offline touch/Back/Home/relaunch checks green for all three apps.
+- [x] API 34 exact APK install/start/offline touch/Back/Home/relaunch checks green for all three apps (d05464e, CI 45577715385).
 - [ ] API 29/36 compatibility runs; real-game save and combat progression assertions; real-device acceptance.
 - Reports: screenshots, signature, logcat, CDP console/network/errors, test-results.json.
+
+## v0.2.2 — 源码隔离与独立适配器
+- [x] 原始导入保持字节一致；独立适配器仅在构建工作区生效；源码与产物追溯、AGENTS.md。
+- [ ] 新版完整 CI 通过，真实游戏运行资源与 d05464e 基线逐文件一致。

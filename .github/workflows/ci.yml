@@ -42,6 +42,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -59,9 +61,13 @@ jobs:
             node scripts/import-blog.mjs "$game" upstream
             node scripts/publisher.mjs prepare "configs/$game.json"
           done
+      - run: node scripts/check-baseline.mjs upstream
       - run: npm install --no-save --no-package-lock playwright@1.56.1
       - run: npx playwright install --with-deps chromium
       - run: node scripts/browser-smoke.mjs
+      - name: Verify original sources and raw exports
+        if: always()
+        run: node scripts/verify-upstream.mjs upstream ashen-bell-vow curio-box
   android-smoke:
     runs-on: ubuntu-24.04
     needs: unit
@@ -116,6 +122,9 @@ jobs:
             dist/${{ matrix.game }}/**/build-info.json
           if-no-files-found: error
       - run: node scripts/publisher.mjs aab "configs/${{ matrix.game }}.json"
+      - name: Verify original source after APK and AAB builds
+        if: always() && matrix.game != 'demo'
+        run: node scripts/verify-upstream.mjs upstream "${{ matrix.game }}"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.game }}-aab

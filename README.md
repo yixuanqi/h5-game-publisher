@@ -78,7 +78,7 @@ v0.2.0 已接入固定版本的两款真实游戏；Node 单测与三款游戏 s
 
 ## v0.2: 固定源码版本、真实游戏接入
 
-回归基线：PhotoGallery commit 5cc1493798b6007c303019003768474bf865c547，灰钟 v45.7、花房 v8.2。CI 从该提交稀疏 checkout 两款游戏，使用 import-blog 复制白名单运行资源（不修改原仓库），按游戏特定锚点适配后台暂停与返回键；锚点变更时显式失败，不静默跳过。游戏内容未提交到发行框架仓。
+回归基线：PhotoGallery commit 5cc1493798b6007c303019003768474bf865c547，灰钟 v45.7、花房 v8.2。CI 从该提交稀疏 checkout 两款游戏，使用 import-blog 复制白名单运行资源（不修改原仓库），在临时构建工作区按游戏特定锚点适配后台暂停与返回键；锚点变更时显式失败，不静默跳过。游戏内容未提交到发行框架仓。
 
 本地接入已有 PhotoGallery checkout（输出目录必须不存在）：
 
@@ -94,3 +94,7 @@ node scripts/publisher.mjs aab configs/curio-box.json
 ## v0.2.1 Android emulator gate
 
 API 34 default, manually select API 29 or 36 from Actions workflow dispatch. Exact same-run debug APK artifacts are installed, verified and exercised; reports are archived even on test failure. See `docs/EMULATOR-TESTS.md` for requirements, coverage and limitations. Emulator tests do not replace real-device acceptance.
+
+## v0.2.2 — 源码隔离
+
+原始游戏仓库只读；`games/` 导入保持运行资源字节一致，旁路 `.publisher-source.json` 记录来源。适配仅发生于 `.work/<id>/www`，通过 `configs/<id>.json` 的 `adapter` 显式选择。已知游戏入口变化将失败并要求兼容性复核；旧版已适配的导出需要重新导入至新目录。`build-info.json` 包含原始/适配文件哈希、变更路径、框架提交和适配器身份。详见 `AGENTS.md` 与 `docs/SOURCE-ISOLATION.md`。
