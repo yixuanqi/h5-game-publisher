@@ -73,13 +73,35 @@ jobs:
       # GitHub Ubuntu runners include Android SDK; avoid deprecated sdkmanager tools package.
       - name: Ensure SDK 36
         run: |
-          test -n "$ANDROID_HOME"
-          sdkmanager --version
-          sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$sdk"
+          echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk" >> "$GITHUB_ENV"
+          if [ -f "$sdk/platforms/android-36/android.jar" ] && [ -x "$sdk/build-tools/36.0.0/aapt2" ]; then
+            echo 'SDK 36 already installed'
+          else
+            manager="$(find "$sdk/cmdline-tools" -name sdkmanager -type f | sort -V | tail -n 1)"
+            test -x "$manager"
+            "$manager" --sdk_root="$sdk" 'platforms;android-36' 'build-tools;36.0.0'
+          fi
+          test -f "$sdk/platforms/android-36/android.jar"
+          test -x "$sdk/build-tools/36.0.0/aapt2"
       - run: node scripts/publisher.mjs apk "configs/${{ matrix.game }}.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.game }}-apk
+          path: |
+            dist/${{ matrix.game }}/**/*.apk
+            dist/${{ matrix.game }}/**/*.apk.sha256
+            dist/${{ matrix.game }}/**/build-info.json
+          if-no-files-found: error
       - run: node scripts/publisher.mjs aab "configs/${{ matrix.game }}.json"
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.game }}-android
-          path: dist/${{ matrix.game }}/
+          name: ${{ matrix.game }}-aab
+          path: |
+            dist/${{ matrix.game }}/**/*.aab
+            dist/${{ matrix.game }}/**/*.aab.sha256
+            dist/${{ matrix.game }}/**/build-info.json
+            dist/${{ matrix.game }}/**/package-lock.json
           if-no-files-found: error
