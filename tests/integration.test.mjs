@@ -8,12 +8,12 @@ import {auditHtml,adaptMain,exportGame} from '../scripts/import-blog.mjs';
 function fixture(t){const d=fs.mkdtempSync(path.join(os.tmpdir(),'h5-import-'));t.after(()=>fs.rmSync(d,{recursive:true,force:true}));return d;}
 const curioMain="  window.addEventListener('pagehide', handleAppHide);";
 test('Curio import is byte-identical to selected original source and excludes dev tools',t=>{
-  const d=fixture(t),s=path.join(d,'docs','curio-box');fs.mkdirSync(path.join(s,'src'),{recursive:true});
+  const d=fixture(t),checkout=path.join(d,'upstream'),s=path.join(checkout,'docs','curio-box');fs.mkdirSync(path.join(s,'src'),{recursive:true});
   fs.writeFileSync(path.join(s,'index.html'),'<head><link rel="stylesheet" href="./style.css?v=1"></head><script src="src/main.js"></script>');
   fs.writeFileSync(path.join(s,'style.css'),'');fs.writeFileSync(path.join(s,'src','main.js'),curioMain);fs.writeFileSync(path.join(s,'README.md'),'dev');
-  const out=path.join(d,'out');assert.equal(exportGame('curio-box',d,out).entryResources.length,2);
+  const out=path.join(d,'out');assert.equal(exportGame('curio-box',checkout,out).entryResources.length,2);
   assert.equal(fs.readFileSync(path.join(s,'src','main.js'),'utf8'),curioMain);assert.equal(fs.readFileSync(path.join(out,'src','main.js'),'utf8'),curioMain);
-  assert.equal(fs.existsSync(path.join(out,'README.md')),false);assert.throws(()=>exportGame('curio-box',d,out),/already exists/);
+  assert.equal(fs.existsSync(path.join(out,'README.md')),false);assert.throws(()=>exportGame('curio-box',checkout,out),/already exists/);
 });
 test('adapter fail-closed on absent or duplicate anchors',()=>{
   assert.throws(()=>adaptMain('curio-box','changed'),/anchor/);assert.throws(()=>adaptMain('curio-box',curioMain+'\n'+curioMain),/anchor/);
