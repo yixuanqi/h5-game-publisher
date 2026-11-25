@@ -6,5 +6,9 @@
   "versionName": "45.7.0",
   "orientation": "sensorLandscape",
   "source": "../games/ashen-bell-vow",
-  "adapter": "ashen-bell-vow"
+  "adapter": "ashen-bell-vow",
+  "android": {
+    "icon": "icon-512.png",
+    "splashColor": "#090b10"
+  }
 }

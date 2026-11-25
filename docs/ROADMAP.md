@@ -35,3 +35,8 @@ Web/itch.io 构建、iOS（需要 macOS/Xcode 与苹果账号）、Windows/Steam
 ## v0.2.2 — 源码隔离与独立适配器
 - [x] 原始导入保持字节一致；独立适配器仅在构建工作区生效；源码与产物追溯、AGENTS.md。
 - [ ] 新版完整 CI 通过，真实游戏运行资源与 d05464e 基线逐文件一致。
+
+## v0.3.1 — Android native/signing foundations
+- [x] Configurable native immersion (demo opt-in), icon and splash branding (demo/Ashen), certificate-pinned offline signing tool.
+- [ ] CI build and disposable test-signing verification; existing emulator gate must remain unchanged. Real-game immersion, adaptive icons, Curio artwork, bundletool, release approval and stable lock remain outstanding.
+- [ ] Ashen intro low-FPS issue remains game-side investigation; 1fcfb0f is 8/9, not accepted full green.

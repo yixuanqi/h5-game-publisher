@@ -98,3 +98,7 @@ API 34 default, manually select API 29 or 36 from Actions workflow dispatch. Exa
 ## v0.2.2 — 源码隔离
 
 原始游戏仓库只读；`games/` 导入保持运行资源字节一致，旁路 `.publisher-source.json` 记录来源。适配仅发生于 `.work/<id>/www`，通过 `configs/<id>.json` 的 `adapter` 显式选择。已知游戏入口变化将失败并要求兼容性复核；旧版已适配的导出需要重新导入至新目录。`build-info.json` 包含原始/适配文件哈希、变更路径、框架提交和适配器身份。详见 `AGENTS.md` 与 `docs/SOURCE-ISOLATION.md`。
+
+## v0.3.1 — Android native and signing foundations
+
+Optional Android branding/splash and immersive native configuration, plus opt-in AAB signing with pinned upload certificate and unchanged-payload verification. Demo CI uses a disposable test key only. See `docs/ANDROID-RELEASE.md` for setup and limits. No automatic production upload.

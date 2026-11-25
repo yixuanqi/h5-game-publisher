@@ -122,6 +122,42 @@ jobs:
             dist/${{ matrix.game }}/**/build-info.json
           if-no-files-found: error
       - run: node scripts/publisher.mjs aab "configs/${{ matrix.game }}.json"
+      - name: Verify AAB signing with disposable test key (demo only)
+        if: matrix.game == 'demo'
+        shell: bash
+        run: |
+          set -euo pipefail
+          export H5_SIGNING_MODE=test H5_KEY_ALIAS=ci-test
+          export H5_STORE_PASSWORD="$(openssl rand -hex 24)"
+          export H5_KEY_PASSWORD="$H5_STORE_PASSWORD"
+          echo "::add-mask::$H5_STORE_PASSWORD"
+          temp="$(mktemp -d)"
+          trap 'rm -rf "$temp"' EXIT
+          export H5_KEYSTORE="$temp/test.p12"
+          keytool -genkeypair -alias "$H5_KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 365 -dname 'CN=CI Disposable Test Only' -storetype PKCS12 -keystore "$H5_KEYSTORE" -storepass:env H5_STORE_PASSWORD -keypass:env H5_KEY_PASSWORD
+          keytool -exportcert -alias "$H5_KEY_ALIAS" -keystore "$H5_KEYSTORE" -storepass:env H5_STORE_PASSWORD -file "$temp/cert.der"
+          export H5_UPLOAD_CERT_SHA256="$(sha256sum "$temp/cert.der" | cut -d' ' -f1)"
+          unsigned="$(find dist/demo -name '*-unsigned.aab' -type f)"
+          if H5_UPLOAD_CERT_SHA256="$(printf '%064d' 0)" node platforms/android/sign-aab.mjs "$unsigned"; then
+            echo 'Wrong signer pin was accepted'; exit 1
+          fi
+          test ! -e "${unsigned%-unsigned.aab}-test-signed.aab"
+          node platforms/android/sign-aab.mjs "$unsigned"
+          signed="${unsigned%-unsigned.aab}-test-signed.aab"
+          test -s "$signed"
+          if node platforms/android/sign-aab.mjs "$unsigned"; then
+            echo 'Existing signed artifact was overwritten'; exit 1
+          fi
+          mkdir -p signing-report
+          cp "$signed.signing.json" signing-report/
+          rm -- "$signed" "$signed.sha256" "$signed.signing.json"
+      - name: Archive signing validation evidence
+        if: matrix.game == 'demo'
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-signing-report
+          path: signing-report/
+          if-no-files-found: error
       - name: Verify original source after APK and AAB builds
         if: always() && matrix.game != 'demo'
         run: node scripts/verify-upstream.mjs upstream "${{ matrix.game }}"

@@ -5,10 +5,11 @@ import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import {snapshot,assertSnapshot,digestManifest,assertChanges,assertDisjoint,checkoutRoot,sha256} from './source-integrity.mjs';
 import {hasAdapter,planAdapter} from '../adapters/index.mjs';
+import {validateAndroid,planAndroid,applyAndroid} from '../platforms/android/native.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const orientations = ['landscape', 'sensorLandscape', 'portrait', 'unspecified'];
 const capVersion = '8.0.0';
-const frameworkVersion = '0.2.2';
+const frameworkVersion = '0.3.1';
 export function validate(c) {
   if (!c || typeof c !== 'object' || Array.isArray(c)) throw Error('Expected JSON object');
   if (!/^[a-z][a-z0-9-]{0,49}$/.test(c.id ?? '')) throw Error('Invalid id');
@@ -19,6 +20,7 @@ export function validate(c) {
   if (!orientations.includes(c.orientation)) throw Error('Invalid orientation');
   if (typeof c.source !== 'string' || !c.source.trim()) throw Error('Missing source');
   if(c.adapter!==undefined&&(!hasAdapter(c.adapter)||(c.adapter!=='none'&&c.adapter!==c.id)))throw Error('Invalid adapter for '+c.id);
+  validateAndroid(c);
   return c;
 }
 function files(dir, rel = '') {
@@ -89,16 +91,17 @@ export function prepare(configPath, sourceOverride, workRoot=path.join(root,'.wo
     fs.writeFileSync(path.join(web,'index.html'),html);
     fs.mkdirSync(path.join(web,'__publisher'));
     fs.copyFileSync(path.join(root,'scripts','runtime.js'),path.join(web,'__publisher','runtime.js'));
+    const native=planAndroid(c,web);
     const staged=snapshot(web);
     const changes=assertChanges(before,staged,[...plan.allowed,'index.html','__publisher/runtime.js']);
     const deps=Object.fromEntries(['core','android','cli','app'].map(k=>['@capacitor/'+k,capVersion]));
     fs.writeFileSync(path.join(work,'package.json'),JSON.stringify({name:c.id,version:'1.0.0',private:true,dependencies:deps},null,2)+'\n');
     if(lock)fs.writeFileSync(lockPath,lock);
     fs.writeFileSync(path.join(work,'capacitor.config.json'),JSON.stringify({appId:c.appId,appName:c.name,webDir:'www',android:{allowMixedContent:false}},null,2)+'\n');
-    const info={schemaVersion:2,frameworkVersion,framework:frameworkIdentity(),capacitorVersion:capVersion,id:c.id,appId:c.appId,versionCode:c.versionCode,versionName:c.versionName,source:source??{repository:null,commit:null,importedFilesSha256:digestManifest(before)},adapter:plan.identity,sourceFiles:before,sourceFilesSha256:digestManifest(before),stagedFiles:staged,stagedFilesSha256:digestManifest(staged),changes};
+    const info={schemaVersion:2,frameworkVersion,framework:frameworkIdentity(),capacitorVersion:capVersion,id:c.id,appId:c.appId,versionCode:c.versionCode,versionName:c.versionName,source:source??{repository:null,commit:null,importedFilesSha256:digestManifest(before)},adapter:plan.identity,android:native.identity,sourceFiles:before,sourceFilesSha256:digestManifest(before),stagedFiles:staged,stagedFilesSha256:digestManifest(staged),changes};
     verifySource();
     fs.writeFileSync(path.join(work,'build-info.json'),JSON.stringify(info,null,2)+'\n');
-    return {c,work,web,verifySource,guard,staged};
+    return {c,work,web,verifySource,guard,staged,native};
   }finally{verifySource();}
 }
 export function patchGradle(s,c){
@@ -128,6 +131,7 @@ function build(p,kind){
   fs.writeFileSync(g,patchGradle(fs.readFileSync(g,'utf8'),c));
   fs.writeFileSync(m,patchManifest(fs.readFileSync(m,'utf8'),c));
   run(npx,['--no-install','cap','sync','android'],work);
+  applyAndroid(android,c,p.native);
   if(kind==='studio'){run(npx,['--no-install','cap','open','android'],work);return;}
   run(win?'gradlew.bat':'./gradlew',[kind==='apk'?'assembleDebug':'bundleRelease','--no-daemon'],android);
   const src=path.join(android,'app','build','outputs',kind==='apk'?'apk/debug/app-debug.apk':'bundle/release/app-release.aab');
