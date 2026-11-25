@@ -10,7 +10,7 @@ import {assertReleaseIdentity,readApprovedLock,importApprovedLock} from '../plat
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const orientations = ['landscape', 'sensorLandscape', 'portrait', 'unspecified'];
 const capVersion = '8.0.0';
-const frameworkVersion = '0.3.2';
+const frameworkVersion = '0.3.3';
 export function validate(c) {
   if (!c || typeof c !== 'object' || Array.isArray(c)) throw Error('Expected JSON object');
   if (!/^[a-z][a-z0-9-]{0,49}$/.test(c.id ?? '')) throw Error('Invalid id');
@@ -127,8 +127,7 @@ function build(p,kind){
   const {work,c}=p; const win=process.platform==='win32';
   const npm=win?'npm.cmd':'npm'; const npx=win?'npx.cmd':'npx';
   const lockPath=path.join(work,'package-lock.json');
-  if(process.env.H5_ANDROID_LOCKFILE)importApprovedLock(process.env.H5_ANDROID_LOCKFILE,lockPath,c.id);
-  if(!fs.existsSync(lockPath))run(npm,['install','--package-lock-only','--ignore-scripts','--no-audit','--no-fund'],work);
+  importApprovedLock(process.env.H5_ANDROID_LOCKFILE||path.join(root,'platforms','android','package-lock.json'),lockPath,c.id);
   const lock=readApprovedLock(lockPath);
   run(npm,['ci','--no-audit','--no-fund'],work);
   if(readApprovedLock(lockPath).fileSha256!==lock.fileSha256)throw Error('npm ci changed approved lock');

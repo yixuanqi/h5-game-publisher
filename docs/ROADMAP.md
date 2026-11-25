@@ -43,5 +43,11 @@ Web/itch.io 构建、iOS（需要 macOS/Xcode 与苹果账号）、Windows/Steam
 
 ## v0.3.2 — Release quality gate
 - [x] Pin official bundletool and validate actual AAB structure, manifest identity/SDK/flags/orientation, bundled web asset hashes and accepted npm lock digest. Registry records immutable package identity and version floors.
-- [ ] Full CI evidence for three unsigned bundles and Demo signed bundle. Canonical committed dependency lock, full Gradle locking and Play version history sync remain pending.
+- [x] Full CI evidence for three unsigned bundles and Demo signed bundle (ede08da / 45607386685).
+- [ ] Full Gradle locking and Play version history sync remain pending.
 - [ ] Existing two real-game emulator issues must be resolved separately; no production release authorization.
+
+## v0.3.3 — Approved artifact promotion and upgrades
+- [x] Committed approved npm lock, version bump debug upgrade tests, candidate evidence binding and manual rehearsal/upload-key signing workflow.
+- [ ] Fresh CI all nine jobs green, all three same-signer upgrade tests and candidate reports; manual release rehearsal with actual CI candidate.
+- [ ] Per-game protected environment/reviewer/secret setup and approved real signing (operator action); real-device validation and cross-source save migration remain separate.

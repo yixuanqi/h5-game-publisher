@@ -8,3 +8,15 @@ games/
 .env.*
 local.properties
 upstream/
+*.p12
+*.pfx
+*.pem
+signing-report/
+upgrade-test/
+emulator-input/
+emulator-upgrade/
+emulator-aab/
+emulator-report/
+candidate/
+rehearsal-report/
+release-output/

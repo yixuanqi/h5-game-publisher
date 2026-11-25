@@ -106,3 +106,8 @@ Optional Android branding/splash and immersive native configuration, plus opt-in
 ## v0.3.2 — Android release validation
 
 AAB quality checks use pinned Bundletool 1.18.3 and inspect actual packaged manifest and staged assets. See `platforms/android/quality-policy.json`, `release-registry.json`, and `docs/ANDROID-RELEASE.md`. For local validation: `node platforms/android/validate-aab.mjs <aab> <config.json> <verified-bundletool.jar>`. Upload signing requires `H5_BUNDLETOOL_JAR`. Set `H5_ANDROID_LOCKFILE` to the saved approved package-lock to avoid re-resolving dependencies; builds reject dependency drift. Release reports are not Google Play approval.
+
+
+## v0.3.3 — Tested artifact promotion
+
+CI builds and tests same-signer higher-version debug upgrades and emits release-evidence.json. The manual **Android release candidate** workflow promotes the exact approved AAB from a fresh fully green CI on the same main SHA; default rehearsal uses a disposable key. Actual upload-key signing requires a separately configured per-game environment and explicit confirmation. No automatic Google Play upload. Approved npm lock is committed. See docs/ANDROID-RELEASE.md for instructions and limits.

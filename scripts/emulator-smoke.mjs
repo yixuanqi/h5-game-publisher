@@ -3,15 +3,16 @@ import path from 'node:path';
 import {spawn,spawnSync} from 'node:child_process';
 import {setTimeout as sleep} from 'node:timers/promises';
 import assert from 'node:assert/strict';
+import {upgradeConfig,assertUpgradePair} from '../platforms/android/upgrade-config.mjs';
 import {findApk,verifyArtifact,verifyBadging,classifyFaults,visible,auditResources,countNativePause,lifecycleRoundTripComplete} from './emulator-lib.mjs';
 const [config,artifactDir,reportDir]=process.argv.slice(2);
 if(!config||!artifactDir||!reportDir)throw Error('Usage: node scripts/emulator-smoke.mjs <config> <artifact-dir> <report-dir>');
 const c=JSON.parse(fs.readFileSync(config,'utf8')), pkg=c.appId;
 if(!/^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/.test(pkg))throw Error('Invalid appId');
 const out=path.resolve(reportDir);fs.mkdirSync(out,{recursive:true});
-const report={game:c.id,appId:pkg,version:c.versionName,run:process.env.GITHUB_RUN_ID||null,status:'failed',tests:[],limitations:['Software GPU; no audio output; no real-device performance verdict','Storage probe checks committed data after normal background; not actual game-save progression or sub-second crash durability','Network audit uses Resource Timing snapshots and observed CDP requests; not a complete packet capture','Explicit in-page reload stress is opt-in; normal runtime gate uses cold launch and process relaunch','Single-touch start/menu interaction; no full combat or multitouch assertion']};
+const report={game:c.id,appId:pkg,version:c.versionName,run:process.env.GITHUB_RUN_ID||null,status:'failed',tests:[],limitations:['Software GPU; no audio output; no real-device performance verdict','Storage and same-source version bump upgrade test use a committed probe; not actual game-save migration or sub-second crash durability','Network audit uses Resource Timing snapshots and observed CDP requests; not a complete packet capture','Explicit in-page reload stress is opt-in; normal runtime gate uses cold launch and process relaunch','Single-touch start/menu interaction; no full combat or multitouch assertion']};
 const messages=[], faults=[], network=[], resourceSnapshots=[];
-let cdp,port,offline=false,installed=false,serial=null,logStream=null;
+let cdp,port,offline=false,installed=false,serial=null,logStream=null,baseInfo=null,baseSigner=null;
 const diagnostics=[];
 function record(message){const entry={at:new Date().toISOString(),message:String(message)};diagnostics.push(entry);fs.appendFileSync(path.join(out,'diagnostics.jsonl'),JSON.stringify(entry)+'\n');}
 function cmd(exe,args,opts={}){
@@ -118,11 +119,13 @@ try{
     return {serial,display:shell('wm','size'),density:shell('wm','density')};
   });
   await step('artifact integrity, APK manifest and signature',()=>{
-    const apk=findApk(artifactDir,c.id);const {hash}=verifyArtifact(apk,c);report.apkSha256=hash;
+    const apk=findApk(artifactDir,c.id);const {hash,info}=verifyArtifact(apk,c);report.apkSha256=hash;baseInfo=info;
     const sdk=process.env.ANDROID_HOME||process.env.ANDROID_SDK_ROOT;
     const bt=path.join(sdk,'build-tools','36.0.0');
     verifyBadging(cmd(path.join(bt,'aapt'),['dump','badging',apk]),c);
-    fs.writeFileSync(path.join(out,'signature.txt'),cmd(path.join(bt,'apksigner'),['verify','--verbose','--print-certs',apk]));
+    const signature=cmd(path.join(bt,'apksigner'),['verify','--verbose','--print-certs',apk]);
+    fs.writeFileSync(path.join(out,'signature.txt'),signature);
+    baseSigner=signature.match(/Signer #1 certificate SHA-256 digest:\s*([a-fA-F0-9]{64})/)?.[1]?.toLowerCase();assert.ok(baseSigner,'missing APK signer digest');
     adb('logcat','-c');startLogcat();assert.match(adb('install',apk),/Success/);installed=true;return hash;
   });
   await step('disable Wi-Fi and cellular before first launch',()=>{
@@ -188,6 +191,34 @@ try{
     capture('07-relaunch');
     return {origin,backgroundSettleMs:10000,score};
   });
+  if(process.env.H5_UPGRADE_ARTIFACT){
+    await step('same-signer higher-version APK upgrade preserves storage',async()=>{
+      const u=upgradeConfig(c),apk=findApk(process.env.H5_UPGRADE_ARTIFACT,c.id);
+      const {hash,info}=verifyArtifact(apk,u);assertUpgradePair(baseInfo,info,c);
+      const bt=path.join(process.env.ANDROID_HOME||process.env.ANDROID_SDK_ROOT,'build-tools','36.0.0');
+      verifyBadging(cmd(path.join(bt,'aapt'),['dump','badging',apk]),u);
+      const sig=cmd(path.join(bt,'apksigner'),['verify','--verbose','--print-certs',apk]);
+      fs.writeFileSync(path.join(out,'upgrade-signature.txt'),sig);
+      const signer=sig.match(/Signer #1 certificate SHA-256 digest:\s*([a-fA-F0-9]{64})/)?.[1]?.toLowerCase();
+      assert.equal(signer,baseSigner,'upgrade signer differs');
+      const probe='localStorage.getItem("__h5publisher_emulator_probe")';
+      const before=await cdp.eval('({origin:location.origin,value:'+probe+',score:document.querySelector("#score")?.textContent??null})');
+      assert.ok(before.value?.startsWith('probe-'),'missing committed pre-upgrade probe');
+      await detach();shell('am','force-stop',pkg);
+      assert.match(adb('install','-r',apk),/Success/);
+      const installed=shell('dumpsys','package',pkg);
+      assert.match(installed,new RegExp('\\bversionCode='+u.versionCode+'\\b'),'installed version did not advance');
+      launch();cdp=await attach();
+      await wait('window.H5Publisher?.isNative()===true','upgrade native bridge',90000);
+      await wait(states?.boot||'document.readyState==="complete"&&!!document.querySelector("#score")','upgrade boot',90000);
+      const after=await cdp.eval('({origin:location.origin,value:'+probe+',score:document.querySelector("#score")?.textContent??null})');
+      assert.equal(after.origin,before.origin);assert.equal(after.value,before.value,'upgrade lost stored value');
+      if(!states)assert.equal(after.score,before.score,'upgrade lost demo score');
+      await captureResources('upgrade-launch');capture('08-upgrade');
+      report.upgrade={status:'passed',baseApkSha256:report.apkSha256,upgradeApkSha256:hash,baseVersionCode:c.versionCode,upgradeVersionCode:u.versionCode,signerSha256:signer,storagePreserved:true,demoScorePreserved:states?null:true};
+      return report.upgrade;
+    });
+  }
   if(process.env.H5_RELOAD_STRESS==='true'){
     await step('optional explicit WebView reload stress',async()=>{
       const timeOrigin=await cdp.eval('performance.timeOrigin');

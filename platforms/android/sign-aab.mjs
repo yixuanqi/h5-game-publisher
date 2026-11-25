@@ -6,6 +6,7 @@ import {fileURLToPath} from 'node:url';
 import {sha256,within} from '../../scripts/source-integrity.mjs';
 import {assertReleaseIdentity} from './quality.mjs';
 import {validateAab} from './validate-aab.mjs';
+import {assertSigningEvidence} from './release-evidence.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 function required(env,k){if(!env[k])throw Error('Missing '+k);return env[k];}
 export function signingOptions(env){
@@ -39,11 +40,17 @@ export function signAab(input,env=process.env){
   const info=JSON.parse(fs.readFileSync(path.join(path.dirname(src),'build-info.json'),'utf8'));
   if(path.basename(src)!==info.id+'-unsigned.aab'||path.basename(path.dirname(src))!==info.versionCode+'-'+info.versionName)throw Error('Build metadata does not match artifact path');
   if(o.mode==='upload'&&(!info.framework?.commit||info.framework.dirty!==false||!info.source?.commit))throw Error('Upload signing requires clean framework and recorded source commit');
-  let releaseConfig=null,bundletool=null;
+  let releaseConfig=null,bundletool=null,releaseEvidence=null;
   if(o.mode==='upload'){
     if(!/^[a-z][a-z0-9-]{0,49}$/.test(info.id))throw Error('Invalid registered game ID');
     releaseConfig=JSON.parse(fs.readFileSync(path.join(root,'configs',info.id+'.json'),'utf8'));
     assertReleaseIdentity(releaseConfig,{upload:true});
+    const evidence=JSON.parse(fs.readFileSync(required(env,'H5_RELEASE_EVIDENCE'),'utf8'));
+    assertSigningEvidence(evidence,info,before,required(env,'H5_APPROVED_AAB_SHA256'));
+    const gitHead=spawnSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'});
+    const gitStatus=spawnSync('git',['status','--porcelain','--untracked-files=normal'],{cwd:root,encoding:'utf8'});
+    if(gitHead.status!==0||gitHead.stdout.trim()!==info.framework.commit||gitStatus.status!==0||gitStatus.stdout.trim())throw Error('Upload signing requires exact clean framework checkout');
+    releaseEvidence=evidence;
     bundletool=required(env,'H5_BUNDLETOOL_JAR');
     validateAab(src,releaseConfig,bundletool,{writeReport:false});
   }
@@ -61,7 +68,7 @@ export function signAab(input,env=process.env){
     const bytes=fs.readFileSync(signed),hash=sha256(bytes);
     fs.copyFileSync(signed,dest,fs.constants.COPYFILE_EXCL);written.push(dest);
     fs.writeFileSync(sum,hash+'  '+path.basename(dest)+'\n',{flag:'wx'});written.push(sum);
-    fs.writeFileSync(report,JSON.stringify({mode:o.mode,id:info.id,appId:info.appId,versionCode:info.versionCode,versionName:info.versionName,sourceCommit:info.source?.commit??null,frameworkCommit:info.framework?.commit??null,unsignedSha256:before,signedSha256:hash,certificateSha256:o.pin,verification:evidence,playValidation:'not performed'},null,2)+'\n',{flag:'wx'});written.push(report);
+    fs.writeFileSync(report,JSON.stringify({mode:o.mode,id:info.id,appId:info.appId,versionCode:info.versionCode,versionName:info.versionName,sourceCommit:info.source?.commit??null,frameworkCommit:info.framework?.commit??null,unsignedSha256:before,signedSha256:hash,certificateSha256:o.pin,ciRunId:releaseEvidence?.ciRunId??null,releaseEvidenceSha256:releaseEvidence?sha256(fs.readFileSync(required(env,'H5_RELEASE_EVIDENCE'))):null,verification:evidence,playValidation:'not performed'},null,2)+'\n',{flag:'wx'});written.push(report);
     if(o.mode==='upload'){validateAab(dest,releaseConfig,bundletool);written.push(dest+'.validation.json');}
     return {dest,report};
   }catch(e){for(const f of written)fs.rmSync(f,{force:true});throw e;}
