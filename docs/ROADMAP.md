@@ -26,3 +26,8 @@
 
 ## v1.0+ — 其他平台
 Web/itch.io 构建、iOS（需要 macOS/Xcode 与苹果账号）、Windows/Steam（独立封装与审核）、其他国内平台按需求实现，不在 v0.1 假设已经支持。
+
+## v0.2.1 — Android emulator gate
+- [ ] API 34 exact APK install/start/offline touch/Back/Home/relaunch checks green for all three apps.
+- [ ] API 29/36 compatibility runs; real-game save and combat progression assertions; real-device acceptance.
+- Reports: screenshots, signature, logcat, CDP console/network/errors, test-results.json.

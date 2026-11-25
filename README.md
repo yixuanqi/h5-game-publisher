@@ -90,3 +90,7 @@ node scripts/publisher.mjs aab configs/curio-box.json
 ```
 
 更新游戏时先记录源码提交、确认版本号递增，使用新输出目录或移走旧导入目录。入口资源静态检查不是完整离线证明；CI 加入禁止外部请求的 Chromium 启动检查，及三个 APK/未签名 AAB 编译任务。Android 真机、触控、音频、存档恢复、签名仍须独立验收。
+
+## v0.2.1 Android emulator gate
+
+API 34 default, manually select API 29 or 36 from Actions workflow dispatch. Exact same-run debug APK artifacts are installed, verified and exercised; reports are archived even on test failure. See `docs/EMULATOR-TESTS.md` for requirements, coverage and limitations. Emulator tests do not replace real-device acceptance.

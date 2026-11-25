@@ -1,0 +1,26 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {createHash} from 'node:crypto';
+import {findApk,verifyArtifact,verifyBadging,classifyFaults} from '../scripts/emulator-lib.mjs';
+const c={id:'demo',appId:'io.github.yixuanqi.h5demo',versionCode:1,versionName:'0.1.0'};
+test('emulator consumes a unique APK with matching checksum and provenance',t=>{
+  const d=fs.mkdtempSync(path.join(os.tmpdir(),'apk-check-'));t.after(()=>fs.rmSync(d,{recursive:true,force:true}));
+  const apk=path.join(d,'demo-debug.apk');fs.writeFileSync(apk,'fixture');
+  fs.writeFileSync(apk+'.sha256',createHash('sha256').update('fixture').digest('hex'));
+  fs.writeFileSync(path.join(d,'build-info.json'),JSON.stringify(c));
+  assert.equal(findApk(d,'demo'),apk);assert.equal(verifyArtifact(apk,c).info.appId,c.appId);
+  assert.throws(()=>verifyArtifact(apk,{...c,versionCode:2}),/mismatch/);
+  fs.writeFileSync(apk,'tampered');assert.throws(()=>verifyArtifact(apk,c),/SHA256/);
+  fs.writeFileSync(path.join(d,'other.apk'),'bad');assert.throws(()=>findApk(d,'demo'),/exactly one/);
+});
+test('APK manifest identity and version are verified independently',()=>{
+  const s="package: name='io.github.yixuanqi.h5demo' versionCode='1' versionName='0.1.0' platformBuildVersionName='16'";
+  verifyBadging(s,c);assert.throws(()=>verifyBadging(s,{...c,versionName:'2.0'}),/metadata mismatch/);
+});
+test('logcat rejects application crash and ANR without unrelated process noise',()=>{
+  const p=c.appId;const log='Process: unrelated, PID: 42\nProcess: '+p+', PID: 43\nANR in '+p+' (activity)\n>>> '+p+' <<<';
+  assert.equal(classifyFaults(log,p).length,3);assert.deepEqual(classifyFaults('Process: unrelated, PID: 42',p),[]);
+});
