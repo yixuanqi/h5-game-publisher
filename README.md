@@ -26,7 +26,7 @@ node scripts/publisher.mjs apk configs/ashen-bell-vow.json 'D:\games\ashen-bell-
 node scripts/publisher.mjs apk configs/curio-box.json 'D:\games\curio-box'
 ```
 
-配置字段：`id` 工作区标识、`appId` Android 包名、`name` App 显示名、`versionCode` 递增整数、`versionName` 展示版本、`orientation` 方向、`source` 相对于配置文件的默认源码目录。两个真实游戏配置是初始草案：首次上架前确认包名、显示名、版本和方向；发布后包名不得随意更改。真实游戏资源未包含在本仓库内，也尚未进行实机适配。
+配置字段：`id` 工作区标识、`appId` Android 包名、`name` App 显示名、`versionCode` 递增整数、`versionName` 展示版本、`orientation` 方向、`source` 相对于配置文件的默认源码目录。两个真实游戏配置已接入固定版本，发行身份仍是初始草案：首次上架前确认包名、显示名、版本和方向；发布后包名不得随意更改。真实游戏资源未包含在本仓库内；固定快照已通过导入和 staging，尚未进行真机验收。
 
 构建阶段每次重建 `.work/<id>/`，请勿在其中保存长期改动。会保留同一游戏同一工具链版本的依赖锁；每次原生构建后也将锁文件随产物导出。首次 npm 解析传递依赖后，应将验证通过的锁纳入后续版本控制（当前环境无法生成）。不要并发构建同一个 id。
 
@@ -74,7 +74,7 @@ powershell -ExecutionPolicy Bypass -File scripts/create-repo.ps1
 
 ## 状态
 
-v0.1.0 是初始骨架：本地 Node 单测与 Demo staging 通过；Android SDK/依赖下载、APK/AAB、签名、真机验证和 GitHub Actions 均尚未完成验证。详见 `docs/ROADMAP.md`。
+v0.2.0 已接入固定版本的两款真实游戏；Node 单测与三款游戏 staging 已通过。原生编译、浏览器运行与真机状态以 Actions 和验收记录为准。详见 `docs/ROADMAP.md`。
 
 ## v0.2: 固定源码版本、真实游戏接入
 

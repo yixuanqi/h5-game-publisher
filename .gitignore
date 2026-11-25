@@ -7,3 +7,4 @@ games/
 .env
 .env.*
 local.properties
+upstream/
