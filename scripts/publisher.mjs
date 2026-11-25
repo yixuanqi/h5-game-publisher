@@ -6,6 +6,7 @@ import { spawnSync } from 'node:child_process';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const orientations = ['landscape', 'sensorLandscape', 'portrait', 'unspecified'];
 const capVersion = '8.0.0';
+const frameworkVersion = '0.2.0';
 export function validate(c) {
   if (!c || typeof c !== 'object' || Array.isArray(c)) throw Error('Expected JSON object');
   if (!/^[a-z][a-z0-9-]{0,49}$/.test(c.id ?? '')) throw Error('Invalid id');
@@ -48,6 +49,7 @@ export function prepare(configPath, sourceOverride, workRoot=path.join(root,'.wo
   const lockPath=path.join(work,'package-lock.json');
   let lock=null;
   if(fs.existsSync(lockPath)) { const raw=fs.readFileSync(lockPath,'utf8'); const deps=JSON.parse(raw).packages?.['']?.dependencies; if(deps?.['@capacitor/core']===capVersion && deps?.['@capacitor/android']===capVersion && deps?.['@capacitor/cli']===capVersion && deps?.['@capacitor/app']===capVersion) lock=raw; }
+  if(fs.existsSync(work) && fs.lstatSync(work).isSymbolicLink()) throw Error('Workspace symlink not allowed');
   fs.rmSync(work,{recursive:true,force:true}); fs.mkdirSync(web,{recursive:true});
   for(const e of entries){ const dest=path.join(web,e); fs.mkdirSync(path.dirname(dest),{recursive:true}); fs.copyFileSync(path.join(input,e),dest); }
   fs.writeFileSync(path.join(web,'index.html'),html); fs.mkdirSync(path.join(web,'__publisher'));
@@ -56,7 +58,7 @@ export function prepare(configPath, sourceOverride, workRoot=path.join(root,'.wo
   fs.writeFileSync(path.join(work,'package.json'),JSON.stringify({name:c.id,version:'1.0.0',private:true,dependencies:deps},null,2)+'\n');
   if(lock) fs.writeFileSync(lockPath,lock);
   fs.writeFileSync(path.join(work,'capacitor.config.json'),JSON.stringify({appId:c.appId,appName:c.name,webDir:'www',android:{allowMixedContent:false}},null,2)+'\n');
-  fs.writeFileSync(path.join(work,'build-info.json'),JSON.stringify({frameworkVersion:'0.1.0',capacitorVersion:capVersion,id:c.id,appId:c.appId,versionCode:c.versionCode,versionName:c.versionName,sourceFiles:hashes},null,2)+'\n');
+  fs.writeFileSync(path.join(work,'build-info.json'),JSON.stringify({frameworkVersion,capacitorVersion:capVersion,id:c.id,appId:c.appId,versionCode:c.versionCode,versionName:c.versionName,sourceFiles:hashes},null,2)+'\n');
   return {c,work,web};
 }
 export function patchGradle(s,c){
@@ -92,8 +94,12 @@ function build(p,kind){
   const output=path.join(root,'dist',c.id,`${c.versionCode}-${c.versionName}`);fs.mkdirSync(output,{recursive:true});
   const dest=path.join(output,c.id+(kind==='apk'?'-debug.apk':'-unsigned.aab'));
   fs.copyFileSync(src,dest);fs.copyFileSync(path.join(work,'build-info.json'),path.join(output,'build-info.json'));
+  fs.writeFileSync(dest+'.sha256',createHash('sha256').update(fs.readFileSync(dest)).digest('hex')+'  '+path.basename(dest)+'\n');
   fs.copyFileSync(path.join(work,'package-lock.json'),path.join(output,'package-lock.json'));
   console.log('Artifact:',dest); if(kind!=='apk') console.log('UNSIGNED AAB — sign with your upload key before Play Console.');
 }
-function main(){const [cmd,config,source]=process.argv.slice(2);if(!['prepare','apk','aab','studio'].includes(cmd)||!config) throw Error('Usage: node scripts/publisher.mjs <prepare|apk|aab|studio> <config.json> [web-export-dir]'); const p=prepare(path.resolve(config),source);console.log('Staged:',p.web);if(cmd!=='prepare')build(p,cmd);}
+function main(){const [cmd,config,source]=process.argv.slice(2);if(!['prepare','apk','aab','studio'].includes(cmd)||!config) throw Error('Usage: node scripts/publisher.mjs <prepare|apk|aab|studio> <config.json> [web-export-dir]'); const p=prepare(path.resolve(config),source);console.log('Staged:',p.web);if(cmd!=='prepare'){
+  if(cmd!=='studio'){const out=path.join(root,'dist',p.c.id,`${p.c.versionCode}-${p.c.versionName}`,p.c.id+(cmd==='apk'?'-debug.apk':'-unsigned.aab'));fs.rmSync(out,{force:true});fs.rmSync(out+'.sha256',{force:true});}
+  build(p,cmd);
+}}
 if(process.argv[1] && path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){try{main();}catch(e){console.error(e.message);process.exitCode=1;}}

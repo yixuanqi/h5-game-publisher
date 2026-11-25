@@ -1,1 +1,9 @@
-{"id":"curio-box","appId":"io.github.yixuanqi.curiobox","name":"Curio Box","versionCode":1,"versionName":"0.1.0","orientation":"sensorLandscape","source":"../games/curio-box"}
+{
+  "id": "curio-box",
+  "appId": "io.github.yixuanqi.curiobox",
+  "name": "Curio Box",
+  "versionCode": 80200,
+  "versionName": "8.2.0",
+  "orientation": "sensorLandscape",
+  "source": "../games/curio-box"
+}

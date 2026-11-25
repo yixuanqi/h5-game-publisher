@@ -1,6 +1,6 @@
 # H5 Game Publisher
 
-小轩游戏工作室 · H5 游戏统一发行工具链（v0.1.0 / bootstrap）
+小轩游戏工作室 · H5 游戏统一发行工具链（v0.2.0 / real-game integration）
 
 目标：一份 H5 游戏源码、每款游戏一份配置、一个可复用的 Android 构建入口。游戏不依赖博客在线地址，原始源码不被构建流程改写。当前只实现 Android，iOS、桌面及其他商店留待后续。
 
@@ -75,3 +75,18 @@ powershell -ExecutionPolicy Bypass -File scripts/create-repo.ps1
 ## 状态
 
 v0.1.0 是初始骨架：本地 Node 单测与 Demo staging 通过；Android SDK/依赖下载、APK/AAB、签名、真机验证和 GitHub Actions 均尚未完成验证。详见 `docs/ROADMAP.md`。
+
+## v0.2: 固定源码版本、真实游戏接入
+
+回归基线：PhotoGallery commit 5cc1493798b6007c303019003768474bf865c547，灰钟 v45.7、花房 v8.2。CI 从该提交稀疏 checkout 两款游戏，使用 import-blog 复制白名单运行资源（不修改原仓库），按游戏特定锚点适配后台暂停与返回键；锚点变更时显式失败，不静默跳过。游戏内容未提交到发行框架仓。
+
+本地接入已有 PhotoGallery checkout（输出目录必须不存在）：
+
+```sh
+node scripts/import-blog.mjs ashen-bell-vow ../PhotoGallery
+node scripts/import-blog.mjs curio-box ../PhotoGallery
+node scripts/publisher.mjs apk configs/ashen-bell-vow.json
+node scripts/publisher.mjs aab configs/curio-box.json
+```
+
+更新游戏时先记录源码提交、确认版本号递增，使用新输出目录或移走旧导入目录。入口资源静态检查不是完整离线证明；CI 加入禁止外部请求的 Chromium 启动检查，及三个 APK/未签名 AAB 编译任务。Android 真机、触控、音频、存档恢复、签名仍须独立验收。
