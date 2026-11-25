@@ -49,3 +49,18 @@ export function auditResources(snapshots,requests,id){
   if(external.length)throw Error('External WebView resources: '+external.join(', '));
   return {snapshots:snapshots.length,observedUrls:[...new Set(urls)].length,cdpRequests:requests.length};
 }
+
+/** Native log is used only to synchronize the background phase, not as a substitute for JS delivery. */
+export function countNativePause(log,pid){
+  if(!/^\d+$/.test(pid))throw Error('Expected one numeric application PID');
+  return log.split(/\r?\n/).filter(line=>{
+    const m=line.match(/^\S+\s+\S+\s+(\d+)\s+\d+\s+[VDIWEF]\s+Capacitor\/AppPlugin:\s+Notifying listeners for event pause\s*$/);
+    return m?.[1]===pid;
+  }).length;
+}
+export function lifecycleRoundTripComplete(before,after){
+  if(!before||!after||before.paused!==false||after.paused!==false||
+    after.visible!==true||after.nativeActive!==true||after.nativeResumed!==true||after.pageActive!==true)return false;
+  return ['nativePauses','nativeResumes','pauses','resumes'].every(k=>
+    Number.isSafeInteger(before[k])&&Number.isSafeInteger(after[k])&&before[k]>=0&&after[k]>before[k]);
+}

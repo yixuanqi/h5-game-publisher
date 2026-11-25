@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
-import {findApk,verifyArtifact,verifyBadging,classifyFaults,auditResources} from '../scripts/emulator-lib.mjs';
+import {findApk,verifyArtifact,verifyBadging,classifyFaults,auditResources,countNativePause,lifecycleRoundTripComplete} from '../scripts/emulator-lib.mjs';
 const c={id:'demo',appId:'io.github.yixuanqi.h5demo',versionCode:1,versionName:'0.1.0'};
 test('emulator consumes a unique APK with matching checksum and provenance',t=>{
   const d=fs.mkdtempSync(path.join(os.tmpdir(),'apk-check-'));t.after(()=>fs.rmSync(d,{recursive:true,force:true}));
@@ -39,4 +39,30 @@ test('resource audit checks every cold/relaunch document without forced reload',
   assert.throws(()=>auditResources([first,second],['https://cdn.example/a.js'],'ashen-bell-vow'),/External/);
   assert.throws(()=>auditResources([{...first,resources:[...first.resources,'https://cdn.example/a.js']}],[],'ashen-bell-vow'),/External/);
   assert.throws(()=>auditResources([],[],'demo'),/No resource snapshots/);
+});
+
+test('native foreground appearance cannot pass until all callbacks arrive in one snapshot (45586844562)',()=>{
+  const before={visible:true,nativeActive:true,nativeResumed:true,pageActive:true,paused:false,nativePauses:0,nativeResumes:0,pauses:0,resumes:0};
+  const failed={...before,nativeResumed:false,paused:true,nativePauses:1,pauses:1};
+  assert.equal(lifecycleRoundTripComplete(before,before),false);
+  assert.equal(lifecycleRoundTripComplete(before,failed),false);
+  assert.equal(lifecycleRoundTripComplete(before,{...failed,paused:false,nativeResumed:true}),false);
+  const complete={...before,nativePauses:1,nativeResumes:1,pauses:1,resumes:1};
+  assert.equal(lifecycleRoundTripComplete(before,complete),true);
+  assert.equal(lifecycleRoundTripComplete(before,{...complete,visible:false}),false);
+  assert.equal(lifecycleRoundTripComplete(before,{...complete,resumes:0}),false);
+  assert.equal(lifecycleRoundTripComplete(complete,complete),false);
+  assert.equal(lifecycleRoundTripComplete(complete,{...complete,nativePauses:2,nativeResumes:2,pauses:2,resumes:2}),true);
+});
+test('native pause synchronization only counts exact AppPlugin pause lines for current PID',()=>{
+  const log=[
+    '11-25 09:44:46.726  2114  2114 V Capacitor/AppPlugin: Notifying listeners for event pause',
+    '11-25 09:44:48.855  2114  2114 V Capacitor/AppPlugin: Notifying listeners for event resume',
+    '11-25 09:44:46.726  9999  9999 V Capacitor/AppPlugin: Notifying listeners for event pause',
+    '11-25 09:44:46.728  2114  2114 D Capacitor: App paused',
+  ].join('\n');
+  assert.equal(countNativePause(log,'2114'),1);
+  assert.equal(countNativePause(log,'9999'),1);
+  assert.equal(countNativePause(log,'2115'),0);
+  assert.throws(()=>countNativePause(log,'2114 9999'),/numeric/);
 });

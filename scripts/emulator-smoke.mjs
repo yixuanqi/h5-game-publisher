@@ -3,7 +3,7 @@ import path from 'node:path';
 import {spawn,spawnSync} from 'node:child_process';
 import {setTimeout as sleep} from 'node:timers/promises';
 import assert from 'node:assert/strict';
-import {findApk,verifyArtifact,verifyBadging,classifyFaults,visible,auditResources} from './emulator-lib.mjs';
+import {findApk,verifyArtifact,verifyBadging,classifyFaults,visible,auditResources,countNativePause,lifecycleRoundTripComplete} from './emulator-lib.mjs';
 const [config,artifactDir,reportDir]=process.argv.slice(2);
 if(!config||!artifactDir||!reportDir)throw Error('Usage: node scripts/emulator-smoke.mjs <config> <artifact-dir> <report-dir>');
 const c=JSON.parse(fs.readFileSync(config,'utf8')), pkg=c.appId;
@@ -58,6 +58,39 @@ const wait=(expr,desc,ms)=>eventually(async()=>{
     throw e;
   }
 },desc,ms);
+async function lifecycleRoundTrip(label,settleMs){
+  const before=await wait('(()=>{const s=window.H5Publisher?.lifecycleSnapshot();return s&&!s.paused&&!document.hidden?s:false;})()',label+' initial foreground');
+  const pid=shell('pidof',pkg);assert.match(pid,/^\d+$/,'one application PID required');
+  const nativeLog=()=>fs.readFileSync(path.join(out,'logcat-stream.txt'),'utf8');
+  const pauseCount=countNativePause(nativeLog(),pid);
+  const evidence={label,before,pid,pauseCount,after:null};
+  (report.lifecycleCycles??=[]).push(evidence);
+  if(label==='Home')report.lifecycle=evidence;
+  shell('input','keyevent','KEYCODE_HOME');
+  // Android may update the activity stack before the app's main thread runs onPause.
+  await eventually(()=>{
+    const background=!shell('dumpsys','activity','activities').split('\n').some(l=>/mResumedActivity|topResumedActivity/.test(l)&&l.includes(pkg+'/'));
+    const count=countNativePause(nativeLog(),pid);
+    evidence.backgroundNativePauseCount=count;
+    return background&&count>pauseCount;
+  },label+' native onPause and background');
+  record(label+' native pause confirmed before relaunch');
+  await sleep(settleMs);
+  launch();
+  assert.equal(shell('pidof',pkg),pid,'unexpected process recreation during '+label);
+  const after=await eventually(async()=>{
+    // One coherent snapshot per observation. Do not accept a foreground-looking snapshot
+    // until the exact new pause and resume callbacks have reached the JS runtime.
+    const observed=await cdp.eval('({snapshot:window.H5Publisher?.lifecycleSnapshot(),hidden:document.hidden})');
+    const current=observed?.snapshot;
+    evidence.after=current??null;
+    if(!current||observed.hidden!==false||!lifecycleRoundTripComplete(before,current))return false;
+    return current;
+  },label+' complete native and publisher pause/resume cycle');
+  assert.equal(shell('pidof',pkg),pid,'unexpected process recreation after '+label);
+  evidence.after=after;record(label+' lifecycle round trip verified');
+  return evidence;
+}
 async function tap(id){
   await wait(visible(id),'visible '+id);
   const point=await cdp.eval('(()=>{const r=document.getElementById('+JSON.stringify(id)+').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2};})()');
@@ -128,20 +161,7 @@ try{
     });
   }
   await step('Home background and foreground without automatic gameplay resume',async()=>{
-    const before=await cdp.eval('window.H5Publisher.lifecycleSnapshot()');
-    assert.equal(before.paused,false);
-    const pidBefore=shell('pidof',pkg);
-    shell('input','keyevent','KEYCODE_HOME');
-    await eventually(()=>!shell('dumpsys','activity','activities').split('\n').some(l=>/mResumedActivity|topResumedActivity/.test(l)&&l.includes(pkg+'/')),'app not foreground');
-    await sleep(3500);launch();
-    assert.equal(shell('pidof',pkg),pidBefore,'unexpected process recreation during Home test');
-    await wait('window.H5Publisher?.isPaused()===false&&!document.hidden','native foreground');
-    const after=await cdp.eval('window.H5Publisher.lifecycleSnapshot()');
-    report.lifecycle={before,after};
-    assert.ok(after.nativePauses>before.nativePauses,'native pause was not delivered');
-    assert.ok(after.nativeResumes>before.nativeResumes,'native resume was not delivered');
-    assert.ok(after.pauses>before.pauses,'publisher did not emit pause');
-    assert.ok(after.resumes>before.resumes,'publisher did not emit resume');
+    await lifecycleRoundTrip('Home',3500);
     if(states){await wait(states.pause,'game remains paused');capture('05-foreground-paused');await tap(states.resume);await wait(states.play,'manual resume');}
     else {await wait('document.querySelector("#state").textContent.includes("Resume")','demo resume prompt');await tap('resume');}
     capture('06-resumed');
@@ -155,16 +175,7 @@ try{
     assert.equal(await cdp.eval(read),value,'same-document readback failed');
     // WebView localStorage writes may be asynchronously committed. Exercise normal background
     // before force-stop; abrupt sub-second crash durability is a separate unverified requirement.
-    const before=await cdp.eval('window.H5Publisher.lifecycleSnapshot()');
-    const pid=shell('pidof',pkg);
-    shell('input','keyevent','KEYCODE_HOME');
-    await eventually(()=>!shell('dumpsys','activity','activities').split('\n').some(l=>/mResumedActivity|topResumedActivity/.test(l)&&l.includes(pkg+'/')),'storage background');
-    await sleep(10000);
-    launch();assert.equal(shell('pidof',pkg),pid,'unexpected recreation before storage readback');
-    await wait('window.H5Publisher?.isPaused()===false&&!document.hidden','storage foreground');
-    const after=await cdp.eval('window.H5Publisher.lifecycleSnapshot()');
-    assert.ok(after.nativePauses>before.nativePauses,'storage background event missing');
-    assert.ok(after.nativeResumes>before.nativeResumes,'storage foreground event missing');
+    await lifecycleRoundTrip('storage',10000);
     assert.equal(await cdp.eval(read),value,'pre-stop readback failed');
     await captureResources('before-force-stop');
     await detach();shell('am','force-stop',pkg);launch();cdp=await attach();
