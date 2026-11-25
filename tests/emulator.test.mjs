@@ -24,3 +24,9 @@ test('logcat rejects application crash and ANR without unrelated process noise',
   const p=c.appId;const log='Process: unrelated, PID: 42\nProcess: '+p+', PID: 43\nANR in '+p+' (activity)\n>>> '+p+' <<<';
   assert.equal(classifyFaults(log,p).length,3);assert.deepEqual(classifyFaults('Process: unrelated, PID: 42',p),[]);
 });
+
+test('dependent-provider process death is an app failure, intentional force-stop is not',()=>{
+  const p=c.appId;
+  assert.equal(classifyFaults('ActivityManager: Killing 2414:'+p+'/u0a192 (adj 0): depends on provider com.google.android.gms/.fonts.provider.FontsProvider',p).length,1);
+  assert.deepEqual(classifyFaults('ActivityManager: Killing 2414:'+p+'/u0a192 (adj 0): stop '+p,p),[]);
+});

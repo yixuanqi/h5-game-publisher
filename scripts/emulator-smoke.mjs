@@ -34,7 +34,7 @@ class CDP{
     ws.addEventListener('close',()=>{for(const p of this.pending.values()){clearTimeout(p.timer);p.reject(Error('CDP disconnected'));}this.pending.clear();});
   }
   static async connect(url){const ws=new WebSocket(url);await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{ws.close();reject(Error('WebSocket connect timeout'));},10000);ws.addEventListener('open',()=>{clearTimeout(timer);resolve();},{once:true});ws.addEventListener('error',()=>{clearTimeout(timer);reject(Error('WebSocket open failed'));},{once:true});});return new CDP(ws);}
-  send(method,params={}){const id=++this.seq;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.pending.delete(id);reject(Error('CDP timeout: '+method));},10000);this.pending.set(id,{resolve,reject,timer});try{this.ws.send(JSON.stringify({id,method,params}));}catch(e){clearTimeout(timer);this.pending.delete(id);reject(e);}});}
+  send(method,params={}){const id=++this.seq;return new Promise((resolve,reject)=>{const timer=setTimeout(()=>{this.pending.delete(id);reject(Error('CDP timeout: '+method));},20000);this.pending.set(id,{resolve,reject,timer});try{this.ws.send(JSON.stringify({id,method,params}));}catch(e){clearTimeout(timer);this.pending.delete(id);reject(e);}});}
   async eval(expression){const r=await this.send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(r.exceptionDetails.exception?.description||r.exceptionDetails.text);return r.result.value;}
   close(){this.ws.close();}
 }
@@ -59,7 +59,11 @@ try{
     const devices=cmd('adb',['devices']).split(/\r?\n/).slice(1).filter(l=>l.trim());
     assert.equal(devices.length,1,'one dedicated emulator required');
     const match=devices[0].match(/^(emulator-\d+)\s+device\s*$/);assert.ok(match,'refusing physical or unavailable device');serial=match[1];
-    assert.equal(shell('getprop','ro.kernel.qemu'),'1');return serial;
+    assert.equal(shell('getprop','ro.kernel.qemu'),'1');
+    // Limit software GPU workload; this is a runtime smoke device, not a performance benchmark.
+    shell('wm','size','720x1280');shell('wm','density','240');
+    fs.writeFileSync(path.join(out,'webview-provider.txt'),shell('dumpsys','webviewupdate'));
+    return {serial,display:shell('wm','size'),density:shell('wm','density')};
   });
   await step('artifact integrity, APK manifest and signature',()=>{
     const apk=findApk(artifactDir,c.id);const {hash}=verifyArtifact(apk,c);report.apkSha256=hash;
@@ -84,7 +88,9 @@ try{
     await wait('innerWidth>innerHeight&&innerHeight>0','landscape viewport');
     capture('01-launch');
     // Observe a full local resource load with CDP already attached; first launch above is independently checked.
+    const timeOrigin=await cdp.eval('performance.timeOrigin');
     await cdp.send('Page.reload',{ignoreCache:true});
+    await wait('performance.timeOrigin!=='+timeOrigin,'new document after reload',90000);
     await wait(states?.boot||'document.readyState==="complete"&&!!document.querySelector("#tap")','reload boot',90000);
     return await cdp.eval('({url:location.href,width:innerWidth,height:innerHeight,dpr:devicePixelRatio})');
   });
@@ -105,10 +111,20 @@ try{
     });
   }
   await step('Home background and foreground without automatic gameplay resume',async()=>{
+    const before=await cdp.eval('window.H5Publisher.lifecycleSnapshot()');
+    assert.equal(before.paused,false);
+    const pidBefore=shell('pidof',pkg);
     shell('input','keyevent','KEYCODE_HOME');
     await eventually(()=>!shell('dumpsys','activity','activities').split('\n').some(l=>/mResumedActivity|topResumedActivity/.test(l)&&l.includes(pkg+'/')),'app not foreground');
-    await sleep(1200);launch();
+    await sleep(3500);launch();
+    assert.equal(shell('pidof',pkg),pidBefore,'unexpected process recreation during Home test');
     await wait('window.H5Publisher?.isPaused()===false&&!document.hidden','native foreground');
+    const after=await cdp.eval('window.H5Publisher.lifecycleSnapshot()');
+    report.lifecycle={before,after};
+    assert.ok(after.nativePauses>before.nativePauses,'native pause was not delivered');
+    assert.ok(after.nativeResumes>before.nativeResumes,'native resume was not delivered');
+    assert.ok(after.pauses>before.pauses,'publisher did not emit pause');
+    assert.ok(after.resumes>before.resumes,'publisher did not emit resume');
     if(states){await wait(states.pause,'game remains paused');capture('05-foreground-paused');await tap(states.resume);await wait(states.play,'manual resume');}
     else {await wait('document.querySelector("#state").textContent.includes("Resume")','demo resume prompt');await tap('resume');}
     capture('06-resumed');
@@ -133,6 +149,7 @@ try{
 }catch(e){report.error=String(e.stack||e);console.error(report.error);process.exitCode=1;try{capture('99-failure');}catch{}}
 finally{
   try{fs.writeFileSync(path.join(out,'logcat.txt'),adb('logcat','-d','-v','threadtime'));}catch{}
+  if(serial){for(const [file,args] of [['activity-state.txt',['dumpsys','activity','activities']],['process-exit-info.txt',['dumpsys','activity','exit-info',pkg]]]){try{fs.writeFileSync(path.join(out,file),shell(...args));}catch{}}}
   fs.writeFileSync(path.join(out,'webview-console.json'),JSON.stringify(messages,null,2));
   fs.writeFileSync(path.join(out,'network-requests.json'),JSON.stringify(network,null,2));
   fs.writeFileSync(path.join(out,'webview-errors.json'),JSON.stringify(faults,null,2));

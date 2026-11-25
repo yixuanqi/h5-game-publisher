@@ -10,4 +10,10 @@ Not yet covered: actual save progression for two real games, movement/attack out
 
 Local: use a dedicated, fresh Android emulator with SDK 36 build tools and Node 22. Run node scripts/emulator-smoke.mjs configs/demo.json <downloaded-extracted-apk-artifact> emulator-report. Script changes network state on the test device; do not point ADB at a personal phone. Uses the active ADB device and expects exactly one APK. Debug APK only.
 
-Results: pending first emulator run. Check Actions artifacts `*-emulator-api-34` for test-results.json, logcat.txt, screenshots and CDP logs. 
+Results: first emulator run 45572525732 failed all three runtime jobs; six existing jobs passed. See incident below. Check Actions artifacts `*-emulator-api-34` for test-results.json, logcat.txt, screenshots and CDP logs. 
+
+## Incident 45572525732 — native lifecycle and system-image isolation
+
+- Demo and Curio: signature/install/offline/boot passed. Curio entered stage 1 and native Back opened pause. Home test failed; Logcat explicitly reports native pause/resume events with no listeners. Short background can skip onStop; appStateChange alone insufficient. Subscribe to pause/resume independently of appStateChange and document visibility. Unit regression models short and full lifecycle, stale initial state, duplicate events. Home acceptance now checks actual native and publisher event counters and same PID, then checks gameplay remains paused. No reduction of assertions.
+- Ashen: install passed; native boot test timed out because Android killed app PID 2414 due to dependence on Google Play services FontsProvider in dying GMS persistent process after its ANR. This is established from logcat. Switch default smoke image to AOSP (no GMS), use 720x1280 software-rendered display; Google APIs remains manually selectable for compatibility tests, not declared green. The original failure is not suppressed.
+- Added process exit info, provider info, activity state evidence and explicit detection of dependent-provider kills. Corrected reload synchronization to avoid stale boot flags. All emulator acceptance remains pending rerun.

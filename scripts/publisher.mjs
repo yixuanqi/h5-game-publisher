@@ -6,7 +6,7 @@ import { spawnSync } from 'node:child_process';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const orientations = ['landscape', 'sensorLandscape', 'portrait', 'unspecified'];
 const capVersion = '8.0.0';
-const frameworkVersion = '0.2.0';
+const frameworkVersion = '0.2.1';
 export function validate(c) {
   if (!c || typeof c !== 'object' || Array.isArray(c)) throw Error('Expected JSON object');
   if (!/^[a-z][a-z0-9-]{0,49}$/.test(c.id ?? '')) throw Error('Invalid id');

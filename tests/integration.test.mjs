@@ -37,3 +37,34 @@ test('native background cannot be overridden by visibility or stale initial stat
   native.backButton();native.appStateChange({isActive:true});
   assert.deepEqual(events,['h5publisher:pause','h5publisher:back','h5publisher:resume']);
 });
+
+test('Android onPause/onResume without onStop pauses game exactly once (CI 45572525732)',async()=>{
+  const events=[],dom={},native={};let resolveInitial;
+  const document={hidden:false,readyState:'complete',addEventListener:(n,f)=>dom[n]=f};
+  const window={Capacitor:{isNativePlatform:()=>true,Plugins:{App:{addListener:(n,f)=>{native[n]=f;return Promise.resolve({});},getState:()=>new Promise(r=>resolveInitial=r)}}},addEventListener:(n,f)=>dom[n]=f,dispatchEvent:e=>events.push(e.type)};
+  class CustomEvent{constructor(type){this.type=type;}}
+  runInNewContext(fs.readFileSync(new URL('../scripts/runtime.js',import.meta.url),'utf8'),{document,window,CustomEvent,console});
+  native.pause();resolveInitial({isActive:true});await Promise.resolve();
+  native.appStateChange({isActive:true});
+  assert.equal(window.H5Publisher.isPaused(),true);
+  assert.equal(window.H5Publisher.lifecycleSnapshot().nativePauses,1);
+  native.pause();document.hidden=true;dom.visibilitychange();
+  document.hidden=false;dom.visibilitychange();
+  assert.equal(window.H5Publisher.isPaused(),true);
+  native.resume();native.resume();
+  assert.equal(window.H5Publisher.isPaused(),false);
+  assert.deepEqual(events,['h5publisher:pause','h5publisher:resume']);
+});
+test('full native stop/start and visibility remain separate lifecycle gates',async()=>{
+  const events=[],dom={},native={};
+  const document={hidden:false,readyState:'complete',addEventListener:(n,f)=>dom[n]=f};
+  const window={Capacitor:{isNativePlatform:()=>true,Plugins:{App:{addListener:(n,f)=>{native[n]=f;return Promise.resolve({});},getState:()=>Promise.resolve({isActive:true})}}},addEventListener:(n,f)=>dom[n]=f,dispatchEvent:e=>events.push(e.type)};
+  class CustomEvent{constructor(type){this.type=type;}}
+  runInNewContext(fs.readFileSync(new URL('../scripts/runtime.js',import.meta.url),'utf8'),{document,window,CustomEvent,console});
+  await Promise.resolve();native.pause();native.appStateChange({isActive:false});
+  document.hidden=true;dom.visibilitychange();native.appStateChange({isActive:true});native.resume();
+  assert.equal(window.H5Publisher.isPaused(),true);
+  document.hidden=false;dom.visibilitychange();
+  assert.equal(window.H5Publisher.isPaused(),false);
+  assert.deepEqual(events,['h5publisher:pause','h5publisher:resume']);
+});

@@ -31,6 +31,6 @@ export function verifyBadging(badging,c){
 }
 export function classifyFaults(log,pkg){
   // logcat crash buffer is cleared before install, on an isolated emulator.
-  return log.split(/\r?\n/).filter(l=>l.includes('Process: '+pkg+',')||l.includes('ANR in '+pkg+' ')||l.includes('ANR in '+pkg+' (')||l.includes('>>> '+pkg+' <<<'));
+  return log.split(/\r?\n/).filter(l=>l.includes('Process: '+pkg+',')||l.includes('ANR in '+pkg+' ')||l.includes('ANR in '+pkg+' (')||l.includes('>>> '+pkg+' <<<')||(l.includes('Killing ')&&l.includes(':'+pkg+'/')&&l.includes('depends on provider')));
 }
 export const visible=(id)=>'(()=>{const e=document.getElementById('+JSON.stringify(id)+');if(!e)return false;const r=e.getBoundingClientRect(),s=getComputedStyle(e);return !e.disabled&&r.width>0&&r.height>0&&s.visibility!=="hidden"&&s.display!=="none"&&e.getClientRects().length>0&&!!e.closest("body")&&(!e.closest(".hidden"));})()';
