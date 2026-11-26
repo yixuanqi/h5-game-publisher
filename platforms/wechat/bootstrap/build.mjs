@@ -36,7 +36,21 @@ try{
   writeJson(path.join(project,'game.json'),{deviceOrientation:'landscape'});
   writeJson(path.join(project,'project.config.json'),{appid,compileType:'game',projectname:'ashen-bell-vow-bootstrap-not-for-release',miniprogramRoot:'./',setting:{es6:true,minified:false}});
   fs.writeFileSync(path.join(project,'game.js'),"'use strict';\nmodule.exports=require('./probe.js').startProbe(wx,()=>require('./engine.js'),globalThis,[25,25,26]);\n");
-  const result=await bundle({entryPoints:[path.join(work,'engine-entry.mjs')],outfile:path.join(project,'engine.js'),bundle:true,format:'cjs',platform:'browser',target:'es2018',metafile:true,logLevel:'warning',minify:true});
+  // Scoped platform-only source transform: no general fake document, no game behavior changes.
+  const approvedCanvasSites=new Map([['src/vfx.js',2],['src/renderParallax.js',2],['src/renderTerrain.js',1],['src/render/backdropCache.js',1]]);
+  const transformed=new Set();
+  const canvasPlugin={name:'wechat-offscreen-canvas',setup(build){
+    build.onLoad({filter:/\.js$/},args=>{
+      const rel=path.relative(raw,args.path).split(path.sep).join('/');
+      if(!approvedCanvasSites.has(rel))return;
+      const src=fs.readFileSync(args.path,'utf8'),anchor="document.createElement('canvas')";
+      if(src.split(anchor).length-1!==approvedCanvasSites.get(rel))throw Error('Unreviewed Canvas sites '+rel);
+      transformed.add(rel);
+      return {contents:src.split(anchor).join('globalThis.__h5WechatCreateOffscreenCanvas()'),loader:'js'};
+    });
+  }};
+  const result=await bundle({entryPoints:[path.join(work,'engine-entry.mjs')],outfile:path.join(project,'engine.js'),bundle:true,format:'cjs',platform:'browser',target:'es2018',metafile:true,logLevel:'warning',minify:false,plugins:[canvasPlugin]});
+  if(transformed.size!==approvedCanvasSites.size)throw Error('Expected reviewed Canvas modules');
   // Audit the full real main module dependency graph separately. This is not an executed game.
   const full=await bundle({entryPoints:[path.join(raw,'src/main.js')],bundle:true,write:false,format:'cjs',platform:'browser',target:'es2018',metafile:true,logLevel:'warning'});
   const browserRefs={};
@@ -50,7 +64,7 @@ try{
   const manifest=snapshot(project);
   const bytes=manifest.reduce((n,x)=>n+fs.statSync(path.join(project,x.path)).size,0);
   if(bytes>4*1024*1024)throw Error('Bootstrap main package exceeds 4 MiB planning budget: '+bytes);
-  writeJson(path.join(work,'build-info.json'),{kind:'wechat-bootstrap-not-release',...spec,framework,sourceTreeSha256:imported.sourceTreeSha256,rawFilesSha256:imported.sourceFilesSha256,projectFiles:manifest,projectFilesSha256:digestManifest(manifest),bytes,engineInputs:Object.keys(result.metafile.inputs).length,fullMainGraphInputs:Object.keys(full.metafile.inputs).length,browserRefs,deviceEvidence:'not-run',releaseReady:false});
+  writeJson(path.join(work,'build-info.json'),{kind:'wechat-bootstrap-not-release',...spec,framework,sourceTreeSha256:imported.sourceTreeSha256,rawFilesSha256:imported.sourceFilesSha256,projectFiles:manifest,projectFilesSha256:digestManifest(manifest),bytes,offscreenTransformed:[...transformed].sort(),engineInputs:Object.keys(result.metafile.inputs).length,fullMainGraphInputs:Object.keys(full.metafile.inputs).length,browserRefs,deviceEvidence:'not-run',releaseReady:false});
   console.log('Built '+project+' ('+bytes+' bytes); full main graph compiled but not executed.');
 }finally{
   assertSnapshot(source,before,'Upstream source');

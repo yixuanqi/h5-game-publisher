@@ -22,3 +22,5 @@ Use a fresh .work/wechat-bootstrap-46.1 directory; builder refuses existing work
 3. Input and lifecycle: native touch multitouch/cancel, pause on hide, resume timing and original save schema; test attacks, parry, spells and grapple against H5.
 4. Audio: verify wx.createWebAudioContext capabilities, pre-bake or adapt graph where needed, no silent fallbacks. Test real device audio.
 5. Package budget, startup performance, privacy inventory and DevTools/Android/iOS physical acceptance; only then use real candidate evidence contract. New 46.1 evidence cannot be attached to old 45.7 materials without explicit version update.
+
+First red/green regression: run 45813263611 reproduced `document is not defined` during real engine initialization after successful package build. The world loader imports renderTerrain -> renderParallax -> vfx plus backdropCache. The publisher now rewrites only six reviewed `document.createElement('canvas')` sites in four modules in the esbuild transform, backed by independent native offscreen canvas allocation. Raw and upstream files remain unchanged. Device support is not yet verified.

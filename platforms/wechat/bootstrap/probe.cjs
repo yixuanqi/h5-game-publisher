@@ -1,10 +1,11 @@
 'use strict';
 // This is an engineering probe, NOT a playable or reviewable release.
-const {createLocalFetch,createStorageAdapter,createSurface,attachLifecycle}=require('./runtime.js');
+const {createLocalFetch,createStorageAdapter,createSurface,createOffscreenFactory,attachLifecycle}=require('./runtime.js');
 function startProbe(wx,loadEngine,host=globalThis,expected=[25,25,26]) {
   const surface=createSurface(wx), ctx=surface.ctx;
   const fetchLocal=createLocalFetch(wx);
   host.fetch=fetchLocal;
+  host.__h5WechatCreateOffscreenCanvas=createOffscreenFactory(wx,surface.canvas);
   const state={phase:'loading',cycle:1,counts:[],error:null,visible:true,busy:true,storage:false,touches:0};
   let engine,disposed=false;
   function paint(){

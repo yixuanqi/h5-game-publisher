@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-const {createLocalFetch,createStorageAdapter,createSurface,attachLifecycle}=createRequire(import.meta.url)('../platforms/wechat/bootstrap/runtime.cjs');
+const {createLocalFetch,createStorageAdapter,createSurface,createOffscreenFactory,attachLifecycle}=createRequire(import.meta.url)('../platforms/wechat/bootstrap/runtime.cjs');
 test('packaged JSON only, missing and corrupt fail',async()=>{
   const fetch=createLocalFetch({getFileSystemManager:()=>({readFileSync(p){if(p==='data/ok.json')return '{"ok":true}';if(p==='data/bad.json')return '{';throw Error('missing')}})});
   assert.deepEqual(await (await fetch('./data/ok.json')).json(),{ok:true});
@@ -25,4 +25,10 @@ test('lifecycle registers and removes same callbacks',()=>{
   const calls=[];const fn=()=>{};const wx={onShow:f=>calls.push(['on',f]),offShow:f=>calls.push(['off',f])};
   const off=attachLifecycle(wx,{show:fn});off();assert.deepEqual(calls,[['on',fn],['off',fn]]);
   assert.throws(()=>attachLifecycle({}, {touch:fn}),/onTouchStart/);
+});
+
+test('offscreen factory allocates real separate surfaces, rejects screen reuse',()=>{
+  const screen={getContext(){}};const make=()=>({getContext(){}});const f=createOffscreenFactory({createOffscreenCanvas:make},screen);
+  assert.notEqual(f(),f());assert.throws(()=>createOffscreenFactory({createCanvas:()=>screen},screen)(),/Independent/);
+  assert.notEqual(createOffscreenFactory({createCanvas:make},screen)(),screen);
 });

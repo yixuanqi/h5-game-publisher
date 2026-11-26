@@ -49,6 +49,18 @@ function createSurface(wx) {
   resize();
   return {canvas,ctx,resize,get width(){return width},get height(){return height}};
 }
+function createOffscreenFactory(wx, screen) {
+  const seen=new WeakSet([screen]);
+  return function createOffscreen() {
+    // The first wx.createCanvas() is the screen; later calls create separate canvases.
+    // Use an actual offscreen surface rather than emulate DOM nodes.
+    const c=typeof wx.createOffscreenCanvas==='function'
+      ? wx.createOffscreenCanvas({type:'2d',width:1,height:1})
+      : wx.createCanvas();
+    if(!c||seen.has(c)||typeof c.getContext!=='function')throw Error('Independent offscreen Canvas unavailable');
+    seen.add(c);return c;
+  };
+}
 function attachLifecycle(wx, handlers) {
   const pairs=[['Show',handlers.show],['Hide',handlers.hide],['TouchStart',handlers.touch],['WindowResize',handlers.resize]];
   const active=[];
@@ -62,4 +74,4 @@ function attachLifecycle(wx, handlers) {
   }
   return ()=>{for(const [event,fn] of active)if(typeof wx['off'+event]==='function')wx['off'+event](fn);};
 }
-module.exports={createLocalFetch,createStorageAdapter,createSurface,attachLifecycle};
+module.exports={createLocalFetch,createStorageAdapter,createSurface,createOffscreenFactory,attachLifecycle};
