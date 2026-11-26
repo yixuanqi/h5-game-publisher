@@ -62,7 +62,7 @@ function startPlay(wx,loadEngine,host=globalThis,options={}){
             else{await engine.ensureWorldForCycle(1);if(state.disposed)return;engine.startTestRun();engine.saveProgress(false);}
             if(state.disposed)return;
             runActive=true;state.saveError=null;ui.navigate('preview');
-          }catch(e){state.saveError=String(e);ui.invalidate();}
+          }catch(e){state.saveError=String(e);console.error('[wechat-save]',e?.stack||e);ui.invalidate();}
           finally{busy=false;}
         })();
         return false;

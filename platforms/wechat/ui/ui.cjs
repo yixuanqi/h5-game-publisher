@@ -20,7 +20,7 @@ function createUI(engine,scene,surface,play=null){
     text(label,x+9,y+h/2,14,enabled?'#f1dca6':'#78818b',w-18);
     buttons.push({id,x,y,w,h,enabled,action});
   }
-  function panel(title){rect(94,39,656,310,'rgba(8,14,23,0.97)','#8c7349');text(title,110,60,21,'#f1dca6');btn('back',L('返回','Back'),660,46,76,30,back);}
+  function panel(title,allowBack=true){rect(94,39,656,310,'rgba(8,14,23,0.97)','#8c7349');text(title,110,60,21,'#f1dca6');if(allowBack)btn('back',L('返回','Back'),660,46,76,30,back);}
   function bar(label,value,max,x,y,col){text(label,x,y,12);rect(x+54,y-5,104,10,'#29343b');rect(x+54,y-5,104*Math.max(0,Math.min(1,value/Math.max(1,max))),10,col);text(Math.round(value)+'/'+max,x+166,y,12);}
   function changeSetting(key,value){
     const old=G.settings[key];G.settings[key]=value;
@@ -125,7 +125,7 @@ function createUI(engine,scene,surface,play=null){
     btn('settings',engine.t('title.menuSettings'),112,140,620,44,()=>navigate('settings','preview'));
     btn('title',play?.persistence?L('保存并返回标题','Save and return to title'):L('返回标题（不保存进度）','Return to title (no progress saved)'),112,192,620,44,()=>{if(!play?.persistence||play.saveTitle())navigate('title');});
   }
-  function dead(){panel(L('角色死亡','Death'));btn('retry',L('于祭坛重燃','Respawn at altar'),112,135,620,48,()=>play.retry());}
+  function dead(){panel(L('角色死亡','Death'),false);btn('retry',L('于祭坛重燃','Respawn at altar'),112,135,620,48,()=>play.retry());}
   function help(){panel(engine.t('title.menuControls'));text(L('移动、跳跃、攻击、弹反、法术、钩索为原游戏操作。','Move, jump, attack, parry, spell and grapple are original actions.'),112,102,15,'#ded5be',620);text(L('本阶段仅测试 Canvas 界面及菜单触控；战斗按钮禁用。','This slice tests Canvas UI and menu touch only; combat disabled.'),112,135,15,'#ded5be',620);}
   const painters={title,slots,preview,map,codex,altar,settings,pause,help,dead};
   function paint(){

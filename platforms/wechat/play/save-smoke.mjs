@@ -19,13 +19,13 @@ function shot(h,name){const png=h.screen.toBuffer('image/png');fs.writeFileSync(
 function slot(n){return JSON.parse(JSON.parse(stored.get(prefix+'ashen_bell_vow_slot_'+n)).value);}
 const h=make();await h.a.ready;h.tick();await h.tap('preview');const G=h.a.engine.G;
 assert.equal(G.gameState,'playing');assert.equal(slot(0).v,42);assert.equal(slot(0).ngPlusCycle,1);assert.equal(slot(0).activeAltarId,'altar_start');
-h.tick(15);await h.tap('interact');assert.equal(h.a.ui.route,'altar');assert.equal(G.player.hp,G.player.maxHp);shot(h,'01-altar');await h.tap('back');
+h.tick(75);await h.tap('interact');assert.equal(h.a.ui.route,'altar');assert.equal(G.player.hp,G.player.maxHp);shot(h,'01-altar');await h.tap('back');
 await h.tap('pause');const old=stored.get(prefix+'ashen_bell_vow_slot_0');quota=true;await h.tap('title');assert.equal(h.a.ui.route,'pause');assert.equal(stored.get(prefix+'ashen_bell_vow_slot_0'),old);assert.ok(h.a.state.saveError);quota=false;
-await h.tap('title');assert.equal(h.a.ui.route,'title');assert.ok(slot(0).playTimeSec>=0);shot(h,'02-title-saved');const saved=slot(0);
+await h.tap('title');assert.equal(h.a.ui.route,'title');assert.ok(slot(0).playTimeSec>=1);shot(h,'02-title-saved');const saved=slot(0);
 await h.tap('slots');await h.tap('slot-1');await h.tap('back');await h.tap('preview');assert.equal(slot(1).v,42);assert.equal(JSON.stringify(slot(0)),JSON.stringify(saved));
 await h.tap('pause');await h.tap('title');h.a.dispose();assert.equal(h.events.size,0);
 const q=make();await q.a.ready;q.tick();await q.tap('preview');const Q=q.a.engine.G;assert.equal(Q.worldState.activeAltarId,saved.activeAltarId);assert.equal(Q.worldState.echoes,saved.echoes);assert.equal(Q.worldState.ngPlusCycle,saved.ngPlusCycle);assert.equal(Q.worldState.unlockedWeapons.size,saved.unlockedWeapons.length);
-assert.equal(Q.gameState,'playing');shot(q,'03-relaunch-resume');
+assert.equal(Q.gameState,'playing',q.a.state.saveError);assert.equal(Q.playTimeSec>=saved.playTimeSec,true);shot(q,'03-relaunch-resume');
 // Controlled death state tests actual original death guard and respawn; not combat death evidence.
 Q.player.hp=0;Q.player.deathTimer=0;q.tick();assert.equal(q.a.ui.route,'dead');await q.tap('retry');assert.equal(Q.gameState,'playing');assert.equal(Q.player.hp,Q.player.maxHp);shot(q,'04-respawn');
 q.a.dispose();
