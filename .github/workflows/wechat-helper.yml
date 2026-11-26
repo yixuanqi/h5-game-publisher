@@ -1,0 +1,41 @@
+name: WeChat helper tooling V0.5.1a
+on:
+  push:
+    paths:
+      - 'platforms/wechat/helper/**'
+      - '.github/workflows/wechat-helper.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  helper:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    env:
+      MINIGAME_HELPER_DISABLE_AUTO_UPDATE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install pinned preview tools in isolated directory
+        run: npm install --prefix platforms/wechat/helper --ignore-scripts --no-audit --no-fund
+      - name: Record resolved dependencies
+        run: |
+          mkdir -p .work/wechat-helper-051a
+          cp platforms/wechat/helper/package-lock.json .work/wechat-helper-051a/package-lock.json
+          npm ls --prefix platforms/wechat/helper --all --json > .work/wechat-helper-051a/npm-tree.json
+      - name: Install headless Chromium
+        run: platforms/wechat/helper/node_modules/.bin/playwright install --with-deps chromium
+      - name: Verify CLI and MCP with isolated fixture
+        run: node platforms/wechat/helper/verify.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wechat-helper-v051a-diagnostics-NOT-RELEASE
+          path: .work/wechat-helper-051a/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14
