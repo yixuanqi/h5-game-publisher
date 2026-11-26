@@ -4,7 +4,7 @@ const W=844,H=390;
 function viewport(w,h){if(!(w>0&&h>0))throw Error('Invalid viewport');const s=Math.min(w/W,h/H);return {s,x:(w-W*s)/2,y:(h-H*s)/2};}
 function hit(rect,x,y){return x>=rect.x&&y>=rect.y&&x<rect.x+rect.w&&y<rect.y+rect.h;}
 function createUI(engine,scene,surface,play=null){
-  const {G}=engine;let route='title',backRoute='title',selected=0,tab='weapons',page=0,buttons=[],layout=null,message='';
+  const {G}=engine;let route='title',backRoute='title',selected=0,tab='weapons',altarTab='relics',page=0,buttons=[],layout=null,message='';
   let draws=0;
   const ctx=surface.ctx, en=()=>engine.isEn(), L=(zh,enText)=>en()?enText:zh;
   function navigate(next,from=route){if(play)play.onRoute(next);route=next;backRoute=from;page=0;buttons=[];message='';}
@@ -80,6 +80,7 @@ function createUI(engine,scene,surface,play=null){
     const x0=Math.min(...b.map(r=>r.x)),y0=Math.min(...b.map(r=>r.y)),x1=Math.max(...b.map(r=>r.x+r.w)),y1=Math.max(...b.map(r=>r.y+r.h));
     const s=Math.min(608/(x1-x0),220/(y1-y0)),ox=118+(608-(x1-x0)*s)/2,oy=84+(220-(y1-y0)*s)/2;
     for(const r of rooms){const q=r.bounds,c=r.id===G.currentRoomId;rect(ox+(q.x-x0)*s,oy+(q.y-y0)*s,q.w*s,q.h*s,c?'#927844':'#263746',c?'#f4d68a':'#566579');}
+    if(play?.progress)for(const pin of G.worldState.mapPins||[]){ctx.fillStyle='#f3b96c';ctx.beginPath();ctx.arc(ox+(pin.x-x0)*s,oy+(pin.y-y0)*s,3,0,Math.PI*2);ctx.fill();}
     const p=G.player;ctx.fillStyle='#79d4ec';ctx.beginPath();ctx.arc(ox+(p.x-x0)*s,oy+(p.y-y0)*s,3,0,Math.PI*2);ctx.fill();
     text(L('实际地图：','Actual rooms: ')+rooms.length+'   '+L('探索 ','Explored ')+engine.getExplorationPercent()+'%',112,322,14);
   }
@@ -99,6 +100,7 @@ function createUI(engine,scene,surface,play=null){
     list(rows);
   }
   function altar(){
+    if(play?.progress){altarActions();return;}
     panel(L('祭坛 · 状态预览','Altar · status preview'));
     const ws=G.worldState,a=engine.ALTARS.find(a=>a.id===ws.activeAltarId);
     text(L('当前祭坛：','Active altar: ')+(a?engine.locAltar(a):ws.activeAltarId),112,90,15);
@@ -127,7 +129,54 @@ function createUI(engine,scene,surface,play=null){
   }
   function dead(){panel(L('角色死亡','Death'),false);btn('retry',L('于祭坛重燃','Respawn at altar'),112,135,620,48,()=>play.retry());}
   function help(){panel(engine.t('title.menuControls'));text(L('移动、跳跃、攻击、弹反、法术、钩索为原游戏操作。','Move, jump, attack, parry, spell and grapple are original actions.'),112,102,15,'#ded5be',620);text(L('本阶段仅测试 Canvas 界面及菜单触控；战斗按钮禁用。','This slice tests Canvas UI and menu touch only; combat disabled.'),112,135,15,'#ded5be',620);}
-  const painters={title,slots,preview,map,codex,altar,settings,pause,help,dead};
+  function plain(s){return String(s||'').replace(/<br\s*\/?>/gi,'\n').replace(/<\/(?:p|div)>/gi,'\n').replace(/<[^>]*>/g,'').replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');}
+  function wrapped(s,maxWidth,size=14){
+    ctx.font=size+'px sans-serif';const out=[];
+    for(const p of plain(s).split('\n')){let line='';for(const ch of p){if(line&&ctx.measureText(line+ch).width>maxWidth){out.push(line);line=ch;}else line+=ch;}out.push(line);}
+    return out;
+  }
+  function paging(last,y=313){btn('prev','‹',112,y,54,28,()=>{page--;},page>0);btn('next','›',678,y,54,28,()=>{page++;},page<last);text((page+1)+' / '+(last+1),386,y+14,13);}
+  function actionRows(rows,perform,y=127,per=4){
+    const last=Math.max(0,Math.ceil(rows.length/per)-1);page=Math.min(page,last);
+    rows.slice(page*per,(page+1)*per).forEach((r,i)=>{const yy=y+i*42;
+      rect(112,yy,620,38,'#1a2632','#405060');text(r.title,120,yy+11,13,'#f1dca6',455);
+      text(plain(r.detail||''),120,yy+26,11,'#a9bac6',455);btn(r.id,r.label||L('执行','Apply'),590,yy+3,134,32,()=>perform(r.id),r.enabled);
+    });paging(last);
+  }
+  function lore(){
+    const lt=play.interaction;panel(engine.locTablet(lt,'title'));
+    text(engine.locTablet(lt,'sub'),112,88,14,'#adbcc6',620);
+    const lines=wrapped(engine.locTablet(lt,'html'),610,15),per=10,last=Math.max(0,Math.ceil(lines.length/per)-1);page=Math.min(page,last);
+    lines.slice(page*per,(page+1)*per).forEach((l,i)=>text(l,112,111+i*18,15));paging(last);
+  }
+  function npc(){
+    const m=engine.nativeNpcModel(play.interaction);
+    panel(m.title);text(m.sub,112,85,13,'#adbcc6',620);
+    const lines=wrapped(m.dialogue,620,12);lines.slice(0,2).forEach((l,i)=>text(l,112,103+i*14,12));
+    actionRows(m.rows,id=>engine.performNativeNpcAction(play.interaction,id),133,4);
+  }
+  function smith(){
+    panel(L('铸钟匠 · 钟纹强化','Smith · Bell-vein upgrades'));
+    text(L('持有残响：','Echoes: ')+G.worldState.echoes,112,87,15);
+    actionRows(engine.nativeSmithRows(),id=>engine.performNativeSmithAction(id),112,4);
+  }
+  function altarActions(){
+    panel(L('祭坛 · 兵刃与圣物','Altar · weapons and relics'));
+    btn('altar-relics',L('圣物','Relics'),112,80,146,30,()=>{altarTab='relics';page=0;});
+    btn('altar-weapons',L('兵刃','Weapons'),270,80,146,30,()=>{altarTab='weapons';page=0;});
+    text(L('残响：','Echoes: ')+G.worldState.echoes,435,95,14);
+    if(altarTab==='relics'){
+      const max=engine.nativeRelicSlotCount();
+      for(let i=0;i<3;i++)btn('relic-slot-'+i,(G.activeRelicSlot===i?'● ':'')+(i+1)+' '+(G.equippedRelics[i]?engine.locRelic(G.equippedRelics[i]):'—'),112+i*207,114,200,30,()=>engine.selectNativeRelicSlot(i),i<max);
+      actionRows(engine.nativeAltarRows(altarTab),id=>engine.performNativeAltarAction(id),150,3);
+    }else actionRows(engine.nativeAltarRows(altarTab),id=>engine.performNativeAltarAction(id),122,4);
+  }
+  function dummy(){
+    const d=play.interaction;panel(L('青铜演武台','Training console'));
+    text('DPS '+Math.round(d.meter?.dps||0)+' · '+L('总伤害 ','Damage ')+Math.round(d.meter?.totalDmg||0),112,88,15);
+    actionRows(engine.nativeDummyRows(d),id=>{if(engine.performNativeDummyAction(d,id)==='close')navigate('preview');},112,4);
+  }
+  const painters={title,slots,preview,map,codex,altar,settings,pause,help,dead,lore,npc,smith,dummy};
   function paint(){
     buttons=[];layout=viewport(surface.width,surface.height);const d=surface.canvas.width/surface.width;
     ctx.save();ctx.setTransform(d*layout.s,0,0,d*layout.s,d*layout.x,d*layout.y);

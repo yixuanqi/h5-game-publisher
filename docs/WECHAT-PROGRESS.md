@@ -1,0 +1,3 @@
+# V0.4d progression UI engineering slice
+
+Build --progress. Source-pinned extraction of NPC conditions/rewards, smith tree status and purchase, relic equip/refine, training actions, lore hooks, weapon equip. UI is native Canvas, simpler than original HTML; gameplay rules reused. Guard every action with current state, no new economy or currency. Test later NPC via controlled original hooks and currency fixtures (not organic playthrough). Haptics maps original duration pattern to native vibrateShort intensity, not hardware proof. All isolated progress-test saves. No release. Remaining: full ending and Boss victory/NG+/echo challenges, full map interaction/warp, original UI visual parity, gameplay and device performance.

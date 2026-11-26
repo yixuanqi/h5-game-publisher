@@ -9,6 +9,7 @@ function startPlay(wx,loadEngine,host=globalThis,options={}){
   host.fetch=createLocalFetch(wx);host.__h5WechatCreateOffscreenCanvas=createOffscreenFactory(wx,surface.canvas);
   // Browser gamepad API is not used on this platform; no fake audio or DOM.
   host.navigator={getGamepads:()=>[]};
+  if(options.progress&&typeof wx.vibrateShort==='function')host.navigator.vibrate=pattern=>{const ms=Array.isArray(pattern)?pattern.reduce((a,v,i)=>a+(i%2===0?Number(v)||0:0),0):Number(pattern)||0;if(ms<=0)return false;wx.vibrateShort({type:ms>=45?'heavy':ms>=20?'medium':'light',fail:()=>{}});return true;};
   if(options.audio){require('./audio-runtime.js').installAudio(wx,host);}
   const request=typeof surface.canvas.requestAnimationFrame==='function'?surface.canvas.requestAnimationFrame.bind(surface.canvas):host.requestAnimationFrame?.bind(host);
   const cancel=typeof surface.canvas.cancelAnimationFrame==='function'?surface.canvas.cancelAnimationFrame.bind(surface.canvas):host.cancelAnimationFrame?.bind(host);
@@ -16,7 +17,7 @@ function startPlay(wx,loadEngine,host=globalThis,options={}){
   const state={phase:'loading',visible:true,frames:0,error:null,disposed:false,blocked:null};
   let scene,ui,engine,touch,pending=Promise.resolve();
   const persistence=!!options.persistence;
-  let runActive=false,busy=false;
+  let runActive=false,busy=false,interaction=null;
   function fail(e){state.phase='ERROR';state.error=e?.stack||String(e);clock.stop();if(touch)touch.reset();console.error('[wechat-play]',state.error);}
   const clock=createFrameClock(request,cancel,dt=>{
     if(ui.route==='preview'&&!state.blocked&&!busy){engine.stepPlaying(dt);engine.render();}
@@ -48,11 +49,11 @@ function startPlay(wx,loadEngine,host=globalThis,options={}){
   wx.onTouchEnd(endEvent);wx.onTouchCancel(endEvent);
   const ready=(async()=>{
     try{
-      engine=loadEngine();engine.setStorageAdapter(createStorageAdapter(wx,options.audio?'h5publisher:wechat:audio-test:':persistence?'h5publisher:wechat:save-test:':'h5publisher:wechat:play-test:'));
+      engine=loadEngine();engine.setStorageAdapter(createStorageAdapter(wx,options.progress?'h5publisher:wechat:progress-test:':options.audio?'h5publisher:wechat:audio-test:':persistence?'h5publisher:wechat:save-test:':'h5publisher:wechat:play-test:'));
       await engine.ensureWorldForCycle(1);if(state.disposed)return state;
       scene=createScene(engine,surface);scene.select(0);engine.loadUserSettings();engine.loadSavedLocale();
       touch=createTouch(engine.setVirtualAction,engine.clearFrameInputs);
-      ui=createUI(engine,scene,surface,{persistence,audio:!!options.audio,applyAudioSettings(){if(options.audio){const s=engine.G.settings;engine.audio.setVolumes(s.masterVol,s.musicVol,s.sfxVol);engine.audio.setMusicEnabled(s.musicEnabled);}},start(){
+      ui=createUI(engine,scene,surface,{persistence,audio:!!options.audio,progress:!!options.progress,get interaction(){return interaction;},applyAudioSettings(){if(options.audio){const s=engine.G.settings;engine.audio.setVolumes(s.masterVol,s.musicVol,s.sfxVol);engine.audio.setMusicEnabled(s.musicEnabled);}},start(){
         state.blocked=null;
         if(!persistence){engine.startTestRun();return true;}
         if(busy)return false;
@@ -83,6 +84,13 @@ function startPlay(wx,loadEngine,host=globalThis,options={}){
         openModal:id=>{if(id==='altar')ui.navigate('altar','preview');else blocked('modal:'+id);},
         closeModal:()=>ui.navigate('preview'),
         showDeath:()=>{if(engine.G.player.hp<=0)ui.navigate('dead','preview');}
+      });
+      if(options.progress)Object.assign(hooks,{
+        openNpcModal:npc=>{interaction=npc;engine.openNativeNpc(npc);},
+        openSmithModal:npc=>{interaction=npc||{id:'npc_smith',kind:'smith'};engine.openNativeNpc(interaction);},
+        openLoreModal:tablet=>{interaction=tablet;engine.openNativeLore(tablet);},
+        openDummyModal:dummy=>{interaction=dummy;ui.navigate('dummy','preview');},
+        openModal:id=>{if(['altar','npc','smith','lore','dummy'].includes(id))ui.navigate(id,'preview');else blocked('modal:'+id);}
       });
       state.phase='READY';if(state.visible)clock.start();return state;
     }catch(e){fail(e);throw e;}
