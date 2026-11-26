@@ -23,4 +23,10 @@ try{
   assert.match(output,/PUBLISHER_TTY_READY/);assert.match(output,/PUBLISHER_TTY_CONFIRM_OK/);
   assert.equal(report.run.serviceConfirmationSent,true);report.result='pass';
 }catch(e){report.error=String(e);console.error(report.error);process.exitCode=1;}
-finally{fs.writeFileSync(path.join(out,'tty-report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));}
+finally{
+  // ConPTY may retain native handles even after its child exits. This is a
+  // dedicated one-shot process: persist the actual verdict before terminating.
+  fs.writeFileSync(path.join(out,'tty-report.json'),JSON.stringify(report,null,2));
+  fs.writeSync(1,JSON.stringify(report)+'\n');
+  process.exit(report.result==='pass' ? 0 : 1);
+}
