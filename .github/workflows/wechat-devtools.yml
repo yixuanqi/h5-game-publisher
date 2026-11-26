@@ -38,7 +38,11 @@ jobs:
       - name: Initialize real IDE profile on first launch
         shell: pwsh
         run: ./platforms/wechat/devtools/warmup.ps1
+      - name: Verify restricted CLI confirmation handler
+        run: node --test platforms/wechat/devtools/service-confirmation.test.mjs
       - name: Execute official CLI and MCP fixture gate
+        env:
+          WECHAT_DISPOSABLE_RUNNER: 'true'
         run: node platforms/wechat/devtools/probe.mjs
       - uses: actions/upload-artifact@v4
         if: always()

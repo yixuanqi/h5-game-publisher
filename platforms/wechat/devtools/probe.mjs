@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import pngjs from 'pngjs';
+import {createServiceConfirmation} from './service-confirmation.mjs';
 const {PNG}=pngjs;
 const here=path.dirname(fileURLToPath(import.meta.url)),root=path.resolve(here,'../../..'),out=path.join(root,'.work/wechat-devtools-051c');
 fs.mkdirSync(out,{recursive:true});
@@ -19,16 +20,21 @@ function textOf(r){return r.content?.filter(c=>c.type==='text').map(c=>c.text).j
 const env=Object.fromEntries(Object.entries(process.env).filter(([k])=>/^(PATH|PATHEXT|SYSTEMROOT|WINDIR|COMSPEC|TEMP|TMP|USERPROFILE|APPDATA|LOCALAPPDATA|HOMEDRIVE|HOMEPATH|PROGRAMFILES(?:\(X86\))?|PROGRAMDATA|OS|SYSTEMDRIVE|NUMBER_OF_PROCESSORS|PROCESSOR_ARCHITECTURE)$/i.test(k)));
 env.WECHAT_PORT=String(port);env.WECHAT_CLI_TIMEOUT='45000';
 let client,transport,children=[];
-function command(name,args,timeout=30000){
+function command(name,args,timeout=30000,confirmService=false){
   for(const a of [cli,...args])assert.ok(typeof a==='string'&&!/["%&|<>^!\r\n]/.test(a),'Unsafe CLI argument');
   const cmd='"'+cli+'" '+args.map(a=>'"'+a+'"').join(' ');
   const log=fs.openSync(path.join(out,name+'.log'),'w');
-  const c=spawn(process.env.ComSpec||'cmd.exe',['/d','/s','/c','"'+cmd+'"'],{env,windowsVerbatimArguments:true,windowsHide:true,stdio:['ignore',log,log]});
-  fs.closeSync(log);children.push(c);
+  const c=spawn(process.env.ComSpec||'cmd.exe',['/d','/s','/c','"'+cmd+'"'],{env,windowsVerbatimArguments:true,windowsHide:true,stdio:[confirmService?'pipe':'ignore','pipe','pipe']});
+  children.push(c);
+  const confirmation=createServiceConfirmation(confirmService&&process.env.GITHUB_ACTIONS==='true'&&process.env.WECHAT_DISPOSABLE_RUNNER==='true',()=>{
+    if(c.stdin&&!c.stdin.destroyed&&!c.stdin.writableEnded)c.stdin.write('y\r\n');
+  });
+  c.stdin?.on('error',()=>{});
+  for(const stream of [c.stdout,c.stderr])stream.on('data',chunk=>{fs.writeSync(log,chunk);confirmation.observe(chunk.toString('utf8'));});
   return new Promise(resolve=>{
-    let done=false;const finish=v=>{if(done)return;done=true;clearTimeout(timer);resolve(v);};
-    const timer=setTimeout(()=>{c.kill();finish({timeout:true});},timeout);
-    c.on('error',e=>finish({error:String(e)}));c.on('exit',(code,signal)=>finish({code,signal}));
+    let done=false;const finish=v=>{if(done)return;done=true;clearTimeout(timer);fs.closeSync(log);resolve({...v,serviceConfirmationSent:confirmation.sent});};
+    const timer=setTimeout(()=>{c.kill();},timeout);
+    c.on('error',e=>finish({error:String(e)}));c.on('close',(code,signal)=>finish({code,signal}));
   });
 }
 function listening(){return new Promise(resolve=>{const c=net.createConnection({host:'127.0.0.1',port});const finish=v=>{c.destroy();resolve(v);};c.setTimeout(800);c.once('connect',()=>finish(true));c.once('timeout',()=>finish(false));c.once('error',()=>finish(false));});}
@@ -58,22 +64,21 @@ try{
   assert.equal(warm.profileReady,true,'IDE first launch did not create profile');
   report.checks.ideProfileReady=true;
   assert.equal(await listening(),false,'Unexpected pre-existing automation listener');
-  report.open=await command('cli-auto',['auto','--project',project,'--auto-port',String(port)],60000);
+  report.open=await command('cli-auto',['auto','--project',project,'--auto-port',String(port)],60000,true);
   const cliOutput=fs.readFileSync(path.join(out,'cli-auto.log'),'utf8');
   // Vendor CLI can return code 0 even after initialize error. Preserve and classify the evidence.
   if(/ENOENT[^\n]*\.cli|initialize error/i.test(cliOutput)){
     report.blocker='CLI_INITIALIZATION_FAILED: profile/path mismatch or cold-start failure';
     throw Error(report.blocker);
   }
-  if(/服务端口已关闭|service port[^\n]*(?:disabled|closed|not enabled)|服务端口未开启/i.test(cliOutput)){
-    report.blocker='SERVICE_PORT_AUTHORIZATION_REQUIRED';throw Error(report.blocker);
-  }
+  const servicePromptSeen=/服务端口已关闭|service port[^\n]*(?:disabled|closed|not enabled)|服务端口未开启/i.test(cliOutput);
+  report.servicePromptSeen=servicePromptSeen;
   if(/请先登录|not logged in|not login|please log in|please login/i.test(cliOutput)){
     report.blocker='LOGIN_REQUIRED';throw Error(report.blocker);
   }
   let connected=false;for(let i=0;i<25;i++){if(await listening()){connected=true;break;}await pause(1000);}
   report.checks.automationPort=connected;
-  if(!connected){report.blocker='Official CLI did not expose automation port; inspect CLI log for login/service-port/desktop requirements';throw Error(report.blocker);}
+  if(!connected){report.blocker=servicePromptSeen?'SERVICE_PORT_AUTHORIZATION_REQUIRED: official confirmation did not establish automation listener':'Official CLI did not expose automation port; inspect CLI log for login/service-port/desktop requirements';throw Error(report.blocker);}
   await call('connect',{wsEndpoint:'ws://127.0.0.1:'+port,projectPath:project},45000);
   const health=JSON.parse(await call('check_health'));assert.equal(health.connected,true);assert.equal(health.projectType,'game');report.health=health;
   report.checks.mcpConnected=true;
