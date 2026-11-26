@@ -1,0 +1,44 @@
+name: WeChat render V0.2 (not release)
+on:
+  push:
+    paths:
+      - 'platforms/wechat/render/**'
+      - 'platforms/wechat/bootstrap/**'
+      - 'tests/wechat-render.test.mjs'
+      - '.github/workflows/wechat-render.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test tests/wechat-bootstrap.test.mjs tests/wechat-render.test.mjs
+      - uses: actions/checkout@v4
+        with:
+          repository: yixuanqi/PhotoGallery
+          ref: cdb508594cc610733f248ec5d4123a3b9d954981
+          path: upstream
+          sparse-checkout: docs/ashen-bell-vow
+          persist-credentials: false
+      - run: npm install --no-save --no-package-lock esbuild@0.25.12 @napi-rs/canvas@0.1.80
+      - run: node platforms/wechat/bootstrap/build.mjs upstream touristappid --render
+      - run: node platforms/wechat/render/smoke.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ashen-v46.1-wechat-render-V0.2-NOT-FOR-RELEASE
+          path: |
+            .work/wechat-render-46.1/project/
+            .work/wechat-render-46.1/build-info.json
+            .work/wechat-render-46.1/render-report.json
+            .work/wechat-render-46.1/screenshots/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
