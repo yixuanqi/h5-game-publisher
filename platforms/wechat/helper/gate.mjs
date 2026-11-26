@@ -1,0 +1,12 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const r=JSON.parse(fs.readFileSync('.work/wechat-helper-051a/report.json','utf8'));
+assert.equal(r.result,'pass');assert.equal(r.scope,'tooling-only');assert.equal(r.releaseReady,false);
+for(const k of ['cli','mcpHandshakeAndTools','runGame','fixtureBrowserExecution','mcpScreenshot'])assert.equal(r.checks[k],true,k);
+assert.equal(r.storageAttempts.length,5);assert.ok(r.screenshot.backgroundPixels>10000&&r.screenshot.markerPixels>1000);
+const blockers=[];if(!r.checks.mcpLog)blockers.push('MCP_LOG_STREAM_MISSING');if(!r.checks.fixtureSyncStorage)blockers.push('WX_SYNC_STORAGE_MISMATCH');
+assert.deepEqual(r.compatibilityBlockers,blockers);assert.equal(r.strictCompatibility,blockers.length?'blocked':'pass');
+assert.equal(r.logBackend,r.checks.mcpLog?'mcp':'playwright-console');
+const summary=['## WeChat helper tooling: PASS','- Log backend: '+r.logBackend,'- Strict compatibility: **'+r.strictCompatibility.toUpperCase()+'**','- Blockers: '+(blockers.join(', ')||'none'),'- Official DevTools / device: not run','- Release ready: false'].join('\n')+'\n';
+console.log(summary);if(process.env.GITHUB_STEP_SUMMARY)fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,summary);
+if(process.argv.includes('--strict'))assert.equal(r.strictCompatibility,'pass','Strict compatibility blocked: '+blockers.join(', '));

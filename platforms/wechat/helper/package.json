@@ -9,6 +9,7 @@
     "@weadmin/minigame-helper": "0.1.50",
     "@weadmin/weixin-minigame-helper-mcp": "0.1.45",
     "@modelcontextprotocol/sdk": "1.25.2",
-    "playwright": "1.56.1"
+    "playwright": "1.56.1",
+    "pngjs": "7.0.0"
   }
 }
