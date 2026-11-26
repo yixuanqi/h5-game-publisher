@@ -37,7 +37,7 @@ function createUI(engine,scene,surface,play=null){
     rect(18,40,270,310,'rgba(8,14,23,0.88)','#846d43');
     text(L('灰钟残誓','Ashen Bell Vow'),34,75,30,'#f1dca6',240);
     text('V46.1 / V0.3 UI',34,100,13,'#aebdca');
-    btn('preview',play?L('开始操作测试','Start gameplay test'):L('进入界面测试','Enter UI preview'),34,124,238,38,()=>{if(play)play.start();navigate('preview');});
+    btn('preview',play?.persistence?L('开始 / 继续档案','Start / continue slot'):play?L('开始操作测试','Start gameplay test'):L('进入界面测试','Enter UI preview'),34,124,238,38,()=>{if(!play||play.start()!==false)navigate('preview');});
     btn('slots',engine.t('title.menuSlots'),34,170,238,38,()=>navigate('slots','title'));
     btn('settings',engine.t('title.menuSettings'),34,216,238,38,()=>navigate('settings','title'));
     btn('help',engine.t('title.menuControls'),34,262,238,38,()=>navigate('help','title'));
@@ -50,7 +50,7 @@ function createUI(engine,scene,surface,play=null){
       const desc=d?L('周目 ','NG ')+(d.ngPlusCycle||1)+' · '+Math.floor((d.playTimeSec||0)/60)+' min':L('空档案','Empty slot');
       btn('slot-'+item.slot,(selected===item.slot?'● ':'○ ')+L('档案 ','Slot ')+(item.slot+1)+'  '+desc,112,y,620,50,()=>{selected=item.slot;G.activeSaveSlot=item.slot;});
     }
-    text(L('仅查看及选择档案；不创建、覆盖、删除或继续游戏。','Read/select only; no create, overwrite, delete or resume.'),112,305,14,'#acb8c2',620);
+    text(play?.persistence?L('选择档案，返回标题后开始或继续；不会覆盖已有档案。','Select a slot, then start/continue from title. No overwrite.'):L('仅查看及选择档案；不创建、覆盖、删除或继续游戏。','Read/select only; no create, overwrite, delete or resume.'),112,305,14,'#acb8c2',620);
     text(L('当前选择：','Selected: ')+(selected+1),112,328,14);
   }
   function preview(){
@@ -68,7 +68,7 @@ function createUI(engine,scene,surface,play=null){
     if(play){
       for(const [id,label,x,y] of [['up',L('上','Up'),41,228],['down',L('下','Down'),41,318],['dash',L('闪避','Dash'),644,226],['interact',L('交互','Use'),644,179],['heal',L('灯油','Heal'),710,179],['seal',L('墨印','Seal'),776,179]])
         btn(id,label,x,y,55,40,()=>{},true);
-      text(L('操作测试 · 音频及进度保存未启用','Gameplay test · audio/save not enabled'),282,365,12,'#aab8c3',350);
+      text(play.persistence?L('存档测试 · 音频未启用','Save test · audio disabled'):L('操作测试 · 音频及进度保存未启用','Gameplay test · audio/save not enabled'),282,365,12,'#aab8c3',350);
     }else{
       text(L('战斗触控尚未接通','Combat controls not connected'),12,329,12,'#aab8c3');
       ['祭坛','铸钟殿','霜骸圣脊'].forEach((label,i)=>btn('scene-'+i,en()?['Altar','Foundry','Frost'][i]:label,282+i*145,350,137,31,()=>scene.select(i)));
@@ -123,16 +123,17 @@ function createUI(engine,scene,surface,play=null){
     panel(L('暂停 · 界面测试','Pause · UI preview'));
     btn('resume',L('继续预览','Resume preview'),112,88,620,44,()=>navigate('preview'));
     btn('settings',engine.t('title.menuSettings'),112,140,620,44,()=>navigate('settings','preview'));
-    btn('title',L('返回标题（不保存进度）','Return to title (no progress saved)'),112,192,620,44,()=>navigate('title'));
+    btn('title',play?.persistence?L('保存并返回标题','Save and return to title'):L('返回标题（不保存进度）','Return to title (no progress saved)'),112,192,620,44,()=>{if(!play?.persistence||play.saveTitle())navigate('title');});
   }
+  function dead(){panel(L('角色死亡','Death'));btn('retry',L('于祭坛重燃','Respawn at altar'),112,135,620,48,()=>play.retry());}
   function help(){panel(engine.t('title.menuControls'));text(L('移动、跳跃、攻击、弹反、法术、钩索为原游戏操作。','Move, jump, attack, parry, spell and grapple are original actions.'),112,102,15,'#ded5be',620);text(L('本阶段仅测试 Canvas 界面及菜单触控；战斗按钮禁用。','This slice tests Canvas UI and menu touch only; combat disabled.'),112,135,15,'#ded5be',620);}
-  const painters={title,slots,preview,map,codex,altar,settings,pause,help};
+  const painters={title,slots,preview,map,codex,altar,settings,pause,help,dead};
   function paint(){
     buttons=[];layout=viewport(surface.width,surface.height);const d=surface.canvas.width/surface.width;
     ctx.save();ctx.setTransform(d*layout.s,0,0,d*layout.s,d*layout.x,d*layout.y);
     ctx.fillStyle='rgba(5,9,16,0.92)';ctx.fillRect(0,0,W,28);
     text(L('工程测试 · 非正式游戏 · 不可提审','Engineering preview · NOT FOR RELEASE'),8,14,12,'#e8ce96');
-    try{painters[route]();draws++;}finally{ctx.restore();}
+    try{painters[route]();if(play?.saveError)text(play.saveError,16,365,12,'#f99',810);draws++;}finally{ctx.restore();}
   }
   function touch(x,y){
     if(!layout||!Number.isFinite(x)||!Number.isFinite(y))return false;

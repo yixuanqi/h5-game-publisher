@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 // Generate from pinned upstream, fail if reviewed seams change. No changes to the source checkout.
 function between(s,a,b){const i=s.indexOf(a),j=s.indexOf(b,i+a.length);if(i<0||j<0||s.indexOf(a,i+1)!==-1)throw Error('Unreviewed extraction '+a);return s.slice(i,j);}
-export function generateSimulation(raw){
+export function generateSimulation(raw,persistence=false){
   const read=p=>fs.readFileSync(path.join(raw,'src',p),'utf8');
   const main=read('main.js'),progress=read('ui/progressionUi.js');
   const step=between(main,'    const curBoss = getAwakeBoss();',"    prof.addModuleTime('update',");
@@ -18,10 +18,28 @@ export function generateSimulation(raw){
     ['  uiHooks.syncHUD(true);','']
   ];
   for(const [a,b] of edits){if(start.split(a).length-1!==1)throw Error('Unreviewed start seam '+a);start=start.replace(a,b);}
+  let lifecycle='';
+  if(persistence){
+    const shared=read('ui/uiShared.js');
+    const theme=between(shared,'export function syncRoomThemeAndResetAudio(', '\n}');
+    let port=between(progress,'export function interactWithAltar(altar) {','export function resetToAltar()');
+    const replacements=[
+      ["  document.getElementById('altar-modal-title').textContent = locAltar(altar, 'shortName');",""],
+      ['  uiHooks.renderRelicChoices();',''],
+      ["  openModal('altar');","  hooks.openModal('altar');"],
+      ['    startGame();','    throw Error("Missing world for respawn");'],
+      ['  hideAllOverlays();','']
+    ];
+    for(const [a,b] of replacements){if(port.split(a).length-1!==1)throw Error('Unreviewed altar seam '+a);port=port.replace(a,b);}
+    if(port.split('  uiHooks.syncHUD(true);').length-1!==2)throw Error('Unreviewed HUD seams');
+    port=port.replaceAll('  uiHooks.syncHUD(true);','');
+    lifecycle=theme+'\n}\n'+port;
+    lifecycle+="\nexport async function restoreTestRun(data){await ensureWorldForCycle(Math.max(1,Math.floor(Number(data.ngPlusCycle)||1)));clearOutcomeTimer();applySaveData(data);G.stats={parries:0,executions:0,damageTaken:0,startTime:performance.now()};const altar=getActiveAltar();G.player=createPlayer(altar.x-14,altar.y-54);respawnAtActiveAltar();}\n";
+  }
   return [
-    "import {G,createFreshWorldState,clearOutcomeTimer,markMapExplored,createLanterns,createResonancePuzzles,createCrumblePlatforms,createFoundryCrucibles,getAwakeBoss,getHudBoss} from './raw/src/state.js';",
-    "import {ALTARS,RELICS,FLOOR_Y} from './raw/src/config.js';",
-    "import {getRoomAt,getPreviewSpawnCoords,getPreviewSpawnRoomId,getRoomSpawnPoint} from './raw/src/levelLoader.js';",
+    "import {G,createFreshWorldState,clearOutcomeTimer,markMapExplored,createLanterns,createResonancePuzzles,createCrumblePlatforms,createFoundryCrucibles,getAwakeBoss,getHudBoss,getActiveAltar,getPlayerMaxFlasks,getPlayerMaxSeals,hooks} from './raw/src/state.js';",
+    "import {ALTARS,RELICS,FLOOR_Y,ROOMS,COLORS} from './raw/src/config.js';",
+    "import {getRoomAt,getPreviewSpawnCoords,getPreviewSpawnRoomId,getRoomSpawnPoint,ensureWorldForCycle} from './raw/src/levelLoader.js';",
     "import {createPlayer,createSentinels,createBoss,createBoss2,createBoss3,createBoss4} from './raw/src/entities.js';",
     "import {capturePlayerInputBuffers,updatePlayer} from './raw/src/player.js';",
     "import {updateEnemy,updateEnemyHitFeel,updateBoss,updateBoss2,updateBoss3,updateBoss4,resetWardenState} from './raw/src/ai.js';",
@@ -32,8 +50,10 @@ export function generateSimulation(raw){
     "export {hooks} from './raw/src/state.js';",
     "export {cycleWeapon} from './raw/src/combat.js';",
     start,
+    ...(persistence?["import {saveProgress,applySaveData} from './raw/src/save.js';", "import {spawnShockwave,spawnParticles,spawnFloatText} from './raw/src/vfx.js';", "import {t,locAltar} from './raw/src/i18n.js';", "export {saveProgress,readSaveData} from './raw/src/save.js';",lifecycle]:[]),
     "let boil=0; export function stepPlaying(dt){if(G.gameState!=='playing')return; G.globalTime+=dt; G.playTimeSec+=dt; boil+=dt; while(boil>=1/7){G.boilFrame++;boil-=1/7;} if(G.invertTimer>0)G.invertTimer=Math.max(0,G.invertTimer-dt); capturePlayerInputBuffers(); try {",
     step,
+    ...(persistence?[between(main,'    if (G.saveDirtyTimer > 0 && !benchOn) {','    const hudT0 =').replace(' && !benchOn','')]:[]),
     "}finally{clearFrameInputs();}}"
   ].join('\n');
 }
