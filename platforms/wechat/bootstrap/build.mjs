@@ -45,7 +45,7 @@ try{
   if(renderMode)fs.writeFileSync(path.join(project,'game.js'),"'use strict';\nmodule.exports=require('./host.js').startRender(wx,()=>require('./engine.js'));\n");
   // Scoped platform-only source transform: no general fake document, no game behavior changes.
   const approvedCanvasSites=new Map([['src/vfx.js',2],['src/renderParallax.js',2],['src/renderTerrain.js',1],['src/render/backdropCache.js',1]]);
-  if(renderMode)for(const [name,count] of [['src/renderer.js',1],['src/render/glyphAtlas.js',3],['src/stampAtlas.js',1]])approvedCanvasSites.set(name,count);
+  if(renderMode)for(const [name,count] of [['src/renderer.js',1],['src/render/glyphAtlas.js',3],['src/stampAtlas.js',1],['src/renderLighting.js',1]])approvedCanvasSites.set(name,count);
   const transformed=new Set();
   const canvasPlugin={name:'wechat-offscreen-canvas',setup(build){
     build.onLoad({filter:/\.js$/},args=>{
