@@ -4,10 +4,10 @@ const W=844,H=390;
 function viewport(w,h){if(!(w>0&&h>0))throw Error('Invalid viewport');const s=Math.min(w/W,h/H);return {s,x:(w-W*s)/2,y:(h-H*s)/2};}
 function hit(rect,x,y){return x>=rect.x&&y>=rect.y&&x<rect.x+rect.w&&y<rect.y+rect.h;}
 function createUI(engine,scene,surface,play=null){
-  const {G}=engine;let route='title',backRoute='title',selected=0,tab='weapons',altarTab='relics',page=0,buttons=[],layout=null,message='';
+  const {G}=engine;let route='title',backRoute='title',selected=0,tab='weapons',altarTab='relics',npcDialogue=false,page=0,buttons=[],layout=null,message='';
   let draws=0;
   const ctx=surface.ctx, en=()=>engine.isEn(), L=(zh,enText)=>en()?enText:zh;
-  function navigate(next,from=route){if(play)play.onRoute(next);route=next;backRoute=from;page=0;buttons=[];message='';}
+  function navigate(next,from=route){if(play)play.onRoute(next);route=next;backRoute=from;npcDialogue=false;page=0;buttons=[];message='';}
   function back(){const next=backRoute==='title'?'title':'preview';navigate(next);}
   function invalidate(){buttons=[];layout=null;}
   function rect(x,y,w,h,fill,stroke){ctx.fillStyle=fill;ctx.fillRect(x,y,w,h);if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=1;ctx.strokeRect(x,y,w,h);}}
@@ -36,7 +36,7 @@ function createUI(engine,scene,surface,play=null){
   function title(){
     rect(18,40,270,310,'rgba(8,14,23,0.88)','#846d43');
     text(L('灰钟残誓','Ashen Bell Vow'),34,75,30,'#f1dca6',240);
-    text('V46.1 / V0.3 UI',34,100,13,'#aebdca');
+    text(play?.progress?'V46.1 / V0.4d':play?.audio?'V46.1 / V0.4c':play?.persistence?'V46.1 / V0.4b':play?'V46.1 / V0.4a':'V46.1 / V0.3 UI',34,100,13,'#aebdca');
     btn('preview',play?.persistence?L('开始 / 继续档案','Start / continue slot'):play?L('开始操作测试','Start gameplay test'):L('进入界面测试','Enter UI preview'),34,124,238,38,()=>{if(!play||play.start()!==false)navigate('preview');});
     btn('slots',engine.t('title.menuSlots'),34,170,238,38,()=>navigate('slots','title'));
     btn('settings',engine.t('title.menuSettings'),34,216,238,38,()=>navigate('settings','title'));
@@ -61,7 +61,7 @@ function createUI(engine,scene,surface,play=null){
     const weapon=engine.getActiveWeapon();text((en()?weapon.nameEn:weapon.name)+' · '+L('残响 ','Echoes ')+ws.echoes,16,103,13,'#f1dca6',240);
     text(engine.locRoomName(engine.ROOMS.find(r=>r.id===G.currentRoomId)),16,121,12,'#adbdcb',240);
     const items=[['map',L('舆图','Map')],['codex',L('残卷','Codex')],['altar',L('祭坛','Altar')],['settings',L('设置','Settings')],['pause',L('暂停','Pause')]];
-    items.forEach(([id,label],i)=>btn(id,label,410+i*85,36,81,32,()=>navigate(id,'preview')));
+    items.forEach(([id,label],i)=>btn(id,label,410+i*85,36,81,32,()=>navigate(id,'preview'),!(play?.progress&&id==='altar')));
     // Explicitly disabled controls. Never imply that combat is working.
     for(const [id,label,x,y] of [['left',L('左','Left'),12,273],['right',L('右','Right'),69,273],['jump',L('跳跃','Jump'),644,273],['attack',L('攻击','Attack'),710,273],['parry',L('弹反','Parry'),776,273],['spell',L('法术','Spell'),710,226],['grapple',L('钩索','Grapple'),776,226]])
       btn(id,label,x,y,55,40,play?()=>{}:null,!!play);
@@ -152,7 +152,9 @@ function createUI(engine,scene,surface,play=null){
   function npc(){
     const m=engine.nativeNpcModel(play.interaction);
     panel(m.title);text(m.sub,112,85,13,'#adbcc6',620);
-    const lines=wrapped(m.dialogue,620,12);lines.slice(0,2).forEach((l,i)=>text(l,112,103+i*14,12));
+    btn('npc-dialogue',npcDialogue?L('服务','Services'):L('完整对话','Dialogue'),610,94,122,29,()=>{npcDialogue=!npcDialogue;page=0;});
+    if(npcDialogue){const lines=wrapped(m.dialogue,610,15),per=9,last=Math.max(0,Math.ceil(lines.length/per)-1);page=Math.min(page,last);lines.slice(page*per,(page+1)*per).forEach((l,i)=>text(l,112,137+i*18,15));paging(last);return;}
+    const lines=wrapped(m.dialogue,480,12);lines.slice(0,2).forEach((l,i)=>text(l,112,103+i*14,12));
     actionRows(m.rows,id=>engine.performNativeNpcAction(play.interaction,id),133,4);
   }
   function smith(){
