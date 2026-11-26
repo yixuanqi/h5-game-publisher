@@ -15,12 +15,14 @@ function git(cwd,...args){
 }
 function writeJson(p,data){fs.writeFileSync(p,JSON.stringify(data,null,2)+'\n');}
 const checkout=fs.realpathSync(process.argv[2]||path.join(root,'upstream'));
-const uiMode=process.argv[4]==='--ui';
+const playMode=process.argv[4]==='--play';
+const uiMode=playMode||process.argv[4]==='--ui';
 const renderMode=uiMode||process.argv[4]==='--render';
 if(process.argv[4]&&!renderMode)throw Error('Unknown build mode');
-const work=path.resolve(root,uiMode?'.work/wechat-ui-46.1':renderMode?'.work/wechat-render-46.1':'.work/wechat-bootstrap-46.1');
+const work=path.resolve(root,playMode?'.work/wechat-play-46.1':uiMode?'.work/wechat-ui-46.1':renderMode?'.work/wechat-render-46.1':'.work/wechat-bootstrap-46.1');
 const renderRoot=path.join(here,'../render');
 const uiRoot=path.join(here,'../ui');
+const playRoot=path.join(here,'../play');
 const appid=process.argv[3]||'touristappid';
 if(!/^(?:touristappid|wx[0-9a-f]{16})$/.test(appid))throw Error('Invalid AppID');
 assertDisjoint(checkout,work);
@@ -42,11 +44,18 @@ try{
     for(const f of ['scene.cjs','host.cjs','clock.cjs'])fs.copyFileSync(path.join(renderRoot,f),path.join(project,f.replace('.cjs','.js')));
   }
   if(uiMode)for(const f of ['ui.cjs','ui-host.cjs'])fs.copyFileSync(path.join(uiRoot,f),path.join(project,f.replace('.cjs','.js')));
+  if(playMode){
+    for(const f of ['play-host.cjs','touch.cjs'])fs.copyFileSync(path.join(playRoot,f),path.join(project,f.replace('.cjs','.js')));
+    const {generateSimulation}=await import('../play/generate.mjs');
+    fs.writeFileSync(path.join(work,'simulation.mjs'),generateSimulation(raw));
+    fs.appendFileSync(path.join(work,'engine-entry.mjs'),"\nexport * from './simulation.mjs';\nexport {setVirtualAction,clearFrameInputs} from './raw/src/input.js';\n");
+  }
   writeJson(path.join(project,'game.json'),{deviceOrientation:'landscape'});
-  writeJson(path.join(project,'project.config.json'),{appid,compileType:'game',projectname:uiMode?'ashen-bell-vow-ui-not-for-release':renderMode?'ashen-bell-vow-render-not-for-release':'ashen-bell-vow-bootstrap-not-for-release',miniprogramRoot:'./',setting:{es6:true,minified:false}});
+  writeJson(path.join(project,'project.config.json'),{appid,compileType:'game',projectname:playMode?'ashen-bell-vow-play-not-for-release':uiMode?'ashen-bell-vow-ui-not-for-release':renderMode?'ashen-bell-vow-render-not-for-release':'ashen-bell-vow-bootstrap-not-for-release',miniprogramRoot:'./',setting:{es6:true,minified:false}});
   fs.writeFileSync(path.join(project,'game.js'),"'use strict';\nmodule.exports=require('./probe.js').startProbe(wx,()=>require('./engine.js'),globalThis,[25,25,26]);\n");
   if(renderMode)fs.writeFileSync(path.join(project,'game.js'),"'use strict';\nmodule.exports=require('./host.js').startRender(wx,()=>require('./engine.js'));\n");
   if(uiMode)fs.writeFileSync(path.join(project,'game.js'),"'use strict';\nmodule.exports=require('./ui-host.js').startUI(wx,()=>require('./engine.js'));\n");
+  if(playMode)fs.writeFileSync(path.join(project,'game.js'),"'use strict';\nmodule.exports=require('./play-host.js').startPlay(wx,()=>require('./engine.js'));\n");
   // Scoped platform-only source transform: no general fake document, no game behavior changes.
   const approvedCanvasSites=new Map([['src/vfx.js',2],['src/renderParallax.js',2],['src/renderTerrain.js',1],['src/render/backdropCache.js',1]]);
   if(renderMode)for(const [name,count] of [['src/renderer.js',1],['src/render/glyphAtlas.js',3],['src/stampAtlas.js',1],['src/renderLighting.js',1]])approvedCanvasSites.set(name,count);
@@ -54,6 +63,11 @@ try{
   const canvasPlugin={name:'wechat-offscreen-canvas',setup(build){
     build.onLoad({filter:/\.js$/},args=>{
       const rel=path.relative(raw,args.path).split(path.sep).join('/');
+      if(playMode&&rel==='src/input.js'){
+        const src=fs.readFileSync(args.path,'utf8'),anchor='function setVirtualAction(action, down)';
+        if(src.split(anchor).length-1!==1)throw Error('Unreviewed virtual action');
+        return {contents:src.replace(anchor,'export '+anchor),loader:'js'};
+      }
       if(uiMode&&rel==='src/i18n.js'){
         const src=fs.readFileSync(args.path,'utf8'),anchor='  applyStaticI18n();';
         if(src.split(anchor).length-1!==1)throw Error('Unreviewed locale DOM call');
@@ -86,7 +100,7 @@ try{
   const manifest=snapshot(project);
   const bytes=manifest.reduce((n,x)=>n+fs.statSync(path.join(project,x.path)).size,0);
   if(bytes>4*1024*1024)throw Error('Bootstrap main package exceeds 4 MiB planning budget: '+bytes);
-  writeJson(path.join(work,'build-info.json'),{kind:uiMode?'wechat-ui-not-release':renderMode?'wechat-render-not-release':'wechat-bootstrap-not-release',...spec,...(uiMode?{adapterVersion:'0.3.0-ui',localeDomCallRemoved:true}:renderMode?{adapterVersion:'0.2.0-render'}:{}),framework,sourceTreeSha256:imported.sourceTreeSha256,rawFilesSha256:imported.sourceFilesSha256,projectFiles:manifest,projectFilesSha256:digestManifest(manifest),bytes,offscreenTransformed:[...transformed].sort(),engineInputs:Object.keys(result.metafile.inputs).length,fullMainGraphInputs:Object.keys(full.metafile.inputs).length,browserRefs,deviceEvidence:'not-run',releaseReady:false});
+  writeJson(path.join(work,'build-info.json'),{kind:playMode?'wechat-play-not-release':uiMode?'wechat-ui-not-release':renderMode?'wechat-render-not-release':'wechat-bootstrap-not-release',...spec,...(playMode?{adapterVersion:'0.4.0-play',localeDomCallRemoved:true}:uiMode?{adapterVersion:'0.3.0-ui',localeDomCallRemoved:true}:renderMode?{adapterVersion:'0.2.0-render'}:{}),framework,sourceTreeSha256:imported.sourceTreeSha256,rawFilesSha256:imported.sourceFilesSha256,projectFiles:manifest,projectFilesSha256:digestManifest(manifest),bytes,offscreenTransformed:[...transformed].sort(),engineInputs:Object.keys(result.metafile.inputs).length,fullMainGraphInputs:Object.keys(full.metafile.inputs).length,browserRefs,deviceEvidence:'not-run',releaseReady:false});
   console.log('Built '+project+' ('+bytes+' bytes); full main graph compiled but not executed.');
 }finally{
   assertSnapshot(source,before,'Upstream source');

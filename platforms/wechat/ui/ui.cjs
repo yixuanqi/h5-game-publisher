@@ -3,11 +3,11 @@
 const W=844,H=390;
 function viewport(w,h){if(!(w>0&&h>0))throw Error('Invalid viewport');const s=Math.min(w/W,h/H);return {s,x:(w-W*s)/2,y:(h-H*s)/2};}
 function hit(rect,x,y){return x>=rect.x&&y>=rect.y&&x<rect.x+rect.w&&y<rect.y+rect.h;}
-function createUI(engine,scene,surface){
+function createUI(engine,scene,surface,play=null){
   const {G}=engine;let route='title',backRoute='title',selected=0,tab='weapons',page=0,buttons=[],layout=null,message='';
   let draws=0;
   const ctx=surface.ctx, en=()=>engine.isEn(), L=(zh,enText)=>en()?enText:zh;
-  function navigate(next,from=route){route=next;backRoute=from;page=0;buttons=[];message='';}
+  function navigate(next,from=route){if(play)play.onRoute(next);route=next;backRoute=from;page=0;buttons=[];message='';}
   function back(){const next=backRoute==='title'?'title':'preview';navigate(next);}
   function invalidate(){buttons=[];layout=null;}
   function rect(x,y,w,h,fill,stroke){ctx.fillStyle=fill;ctx.fillRect(x,y,w,h);if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=1;ctx.strokeRect(x,y,w,h);}}
@@ -37,7 +37,7 @@ function createUI(engine,scene,surface){
     rect(18,40,270,310,'rgba(8,14,23,0.88)','#846d43');
     text(L('灰钟残誓','Ashen Bell Vow'),34,75,30,'#f1dca6',240);
     text('V46.1 / V0.3 UI',34,100,13,'#aebdca');
-    btn('preview',L('进入界面测试','Enter UI preview'),34,124,238,38,()=>navigate('preview'));
+    btn('preview',play?L('开始操作测试','Start gameplay test'):L('进入界面测试','Enter UI preview'),34,124,238,38,()=>{if(play)play.start();navigate('preview');});
     btn('slots',engine.t('title.menuSlots'),34,170,238,38,()=>navigate('slots','title'));
     btn('settings',engine.t('title.menuSettings'),34,216,238,38,()=>navigate('settings','title'));
     btn('help',engine.t('title.menuControls'),34,262,238,38,()=>navigate('help','title'));
@@ -64,9 +64,15 @@ function createUI(engine,scene,surface){
     items.forEach(([id,label],i)=>btn(id,label,410+i*85,36,81,32,()=>navigate(id,'preview')));
     // Explicitly disabled controls. Never imply that combat is working.
     for(const [id,label,x,y] of [['left',L('左','Left'),12,273],['right',L('右','Right'),69,273],['jump',L('跳跃','Jump'),644,273],['attack',L('攻击','Attack'),710,273],['parry',L('弹反','Parry'),776,273],['spell',L('法术','Spell'),710,226],['grapple',L('钩索','Grapple'),776,226]])
-      btn(id,label,x,y,55,40,null,false);
-    text(L('战斗触控尚未接通','Combat controls not connected'),12,329,12,'#aab8c3');
-    ['祭坛','铸钟殿','霜骸圣脊'].forEach((label,i)=>btn('scene-'+i,en()?['Altar','Foundry','Frost'][i]:label,282+i*145,350,137,31,()=>scene.select(i)));
+      btn(id,label,x,y,55,40,play?()=>{}:null,!!play);
+    if(play){
+      for(const [id,label,x,y] of [['up',L('上','Up'),41,228],['down',L('下','Down'),41,318],['dash',L('闪避','Dash'),644,226],['interact',L('交互','Use'),644,179],['heal',L('灯油','Heal'),710,179],['seal',L('墨印','Seal'),776,179]])
+        btn(id,label,x,y,55,40,()=>{},true);
+      text(L('操作测试 · 音频及进度保存未启用','Gameplay test · audio/save not enabled'),282,365,12,'#aab8c3',350);
+    }else{
+      text(L('战斗触控尚未接通','Combat controls not connected'),12,329,12,'#aab8c3');
+      ['祭坛','铸钟殿','霜骸圣脊'].forEach((label,i)=>btn('scene-'+i,en()?['Altar','Foundry','Frost'][i]:label,282+i*145,350,137,31,()=>scene.select(i)));
+    }
   }
   function map(){
     panel(L('晦渊舆图 · 测试只读','Map · read-only preview'));
@@ -134,6 +140,6 @@ function createUI(engine,scene,surface){
     const b=buttons.find(b=>hit(b,lx,ly));if(!b||!b.enabled||typeof b.action!=='function')return false;
     buttons=[];b.action();return true;
   }
-  return {paint,touch,invalidate,get route(){return route},get selected(){return selected},get tab(){return tab},get page(){return page},get draws(){return draws},get targets(){return buttons.map(({action,...r})=>r)}};
+  return {paint,touch,invalidate,navigate,get route(){return route},get selected(){return selected},get tab(){return tab},get page(){return page},get draws(){return draws},get targets(){return buttons.map(({action,...r})=>r)}};
 }
 module.exports={viewport,hit,createUI};
