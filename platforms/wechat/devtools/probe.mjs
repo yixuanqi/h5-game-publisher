@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import {Client} from '@modelcontextprotocol/sdk/client/index.js';
 import {StdioClientTransport} from '@modelcontextprotocol/sdk/client/stdio.js';
 import pngjs from 'pngjs';
-import {createServiceConfirmation} from './service-confirmation.mjs';
+import {runInteractive} from './interactive.mjs';
+import {stripVTControlCharacters} from 'node:util';
 const {PNG}=pngjs;
 const here=path.dirname(fileURLToPath(import.meta.url)),root=path.resolve(here,'../../..'),out=path.join(root,'.work/wechat-devtools-051c');
 fs.mkdirSync(out,{recursive:true});
@@ -23,17 +24,18 @@ let client,transport,children=[];
 function command(name,args,timeout=30000,confirmService=false){
   for(const a of [cli,...args])assert.ok(typeof a==='string'&&!/["%&|<>^!\r\n]/.test(a),'Unsafe CLI argument');
   const cmd='"'+cli+'" '+args.map(a=>'"'+a+'"').join(' ');
-  const log=fs.openSync(path.join(out,name+'.log'),'w');
-  const c=spawn(process.env.ComSpec||'cmd.exe',['/d','/s','/c','"'+cmd+'"'],{env,windowsVerbatimArguments:true,windowsHide:true,stdio:[confirmService?'pipe':'ignore','pipe','pipe']});
-  children.push(c);
-  const confirmation=createServiceConfirmation(confirmService&&process.env.GITHUB_ACTIONS==='true'&&process.env.WECHAT_DISPOSABLE_RUNNER==='true',()=>{
-    if(c.stdin&&!c.stdin.destroyed&&!c.stdin.writableEnded)c.stdin.write('y\r\n');
-  });
-  c.stdin?.on('error',()=>{});
-  for(const stream of [c.stdout,c.stderr])stream.on('data',chunk=>{fs.writeSync(log,chunk);confirmation.observe(chunk.toString('utf8'));});
+  const shell=process.env.ComSpec||'cmd.exe',logPath=path.join(out,name+'.log');
+  if(confirmService){
+    assert.equal(process.env.GITHUB_ACTIONS,'true');
+    assert.equal(process.env.WECHAT_DISPOSABLE_RUNNER,'true','TTY confirmation only on disposable credential-free CI');
+    return runInteractive(shell,'/d /s /c "'+cmd+'"',{cwd:project,env,timeout,logPath,allowService:true});
+  }
+  const fd=fs.openSync(logPath,'w');
+  const c=spawn(shell,['/d','/s','/c','"'+cmd+'"'],{env,windowsVerbatimArguments:true,windowsHide:true,stdio:['ignore',fd,fd]});
+  fs.closeSync(fd);children.push(c);
   return new Promise(resolve=>{
-    let done=false;const finish=v=>{if(done)return;done=true;clearTimeout(timer);fs.closeSync(log);resolve({...v,serviceConfirmationSent:confirmation.sent});};
-    const timer=setTimeout(()=>{c.kill();},timeout);
+    let done=false;const finish=v=>{if(done)return;done=true;clearTimeout(timer);resolve(v);};
+    const timer=setTimeout(()=>{c.kill();finish({timeout:true});},timeout);
     c.on('error',e=>finish({error:String(e)}));c.on('close',(code,signal)=>finish({code,signal}));
   });
 }
@@ -63,9 +65,12 @@ try{
   const warm=JSON.parse(fs.readFileSync(path.join(out,'warmup-report.json'),'utf8'));
   assert.equal(warm.profileReady,true,'IDE first launch did not create profile');
   report.checks.ideProfileReady=true;
+  const tty=JSON.parse(fs.readFileSync(path.join(out,'tty-report.json'),'utf8'));
+  assert.equal(tty.result,'pass','ConPTY control not verified');report.checks.interactiveTerminal=true;
   assert.equal(await listening(),false,'Unexpected pre-existing automation listener');
   report.open=await command('cli-auto',['auto','--project',project,'--auto-port',String(port)],60000,true);
-  const cliOutput=fs.readFileSync(path.join(out,'cli-auto.log'),'utf8');
+  const cliOutput=stripVTControlCharacters(fs.readFileSync(path.join(out,'cli-auto.log'),'utf8'));
+  assert.ok(!report.open.timeout&&!report.open.error,'Interactive CLI failed or timed out');
   // Vendor CLI can return code 0 even after initialize error. Preserve and classify the evidence.
   if(/ENOENT[^\n]*\.cli|initialize error/i.test(cliOutput)){
     report.blocker='CLI_INITIALIZATION_FAILED: profile/path mismatch or cold-start failure';

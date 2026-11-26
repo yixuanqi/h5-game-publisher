@@ -40,6 +40,8 @@ jobs:
         run: ./platforms/wechat/devtools/warmup.ps1
       - name: Verify restricted CLI confirmation handler
         run: node --test platforms/wechat/devtools/service-confirmation.test.mjs
+      - name: Verify actual Windows ConPTY terminal and restricted prompt
+        run: node platforms/wechat/devtools/tty-smoke.mjs
       - name: Execute official CLI and MCP fixture gate
         env:
           WECHAT_DISPOSABLE_RUNNER: 'true'
