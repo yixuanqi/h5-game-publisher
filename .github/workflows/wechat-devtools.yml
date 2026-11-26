@@ -1,0 +1,46 @@
+name: WeChat official DevTools V0.5.1c
+on:
+  push:
+    paths:
+      - 'platforms/wechat/devtools/**'
+      - '.github/workflows/wechat-devtools.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  official-devtools:
+    runs-on: windows-2025
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check out pinned MCP implementation
+        uses: actions/checkout@v4
+        with:
+          repository: jiawei686/wechat-dev-mcp
+          ref: f357c6a01e156bdda418ca4f8726d5241ef42cc1
+          path: .work/wechat-dev-mcp-vendor
+          persist-credentials: false
+      - name: Install automation dependencies without lifecycle scripts
+        run: |
+          npm install --prefix platforms/wechat/devtools --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          npm install --prefix .work/wechat-dev-mcp-vendor --ignore-scripts --no-audit --no-fund
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --check platforms/wechat/devtools/probe.mjs
+      - name: Install verified official Windows DevTools
+        shell: pwsh
+        run: ./platforms/wechat/devtools/install.ps1
+      - name: Execute official CLI and MCP fixture gate
+        run: node platforms/wechat/devtools/probe.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wechat-official-051c-diagnostics-NOT-RELEASE
+          path: .work/wechat-devtools-051c/
+          if-no-files-found: warn
+          retention-days: 14

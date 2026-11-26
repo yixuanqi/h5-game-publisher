@@ -1,0 +1,6 @@
+{
+  "version": "2.02.2609250",
+  "url": "https://dldir1v6.qq.com/WechatWebDev/release/be1ec64cf6184b0fa64091919793f068/wechat_devtools_2.02.2609250_win32_x64.exe",
+  "sha256": "6AF4ACB487883F4335206171E13B9B42A27BA2B8434EE3FE83A5F43D5D49F9B8",
+  "manifest": "https://github.com/microsoft/winget-pkgs/blob/master/manifests/t/Tencent/WeixinDevTools/2.02.2609250/Tencent.WeixinDevTools.installer.yaml"
+}
