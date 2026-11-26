@@ -11,7 +11,11 @@ const nativeNavigator=Object.freeze({userAgent:'DevTools native getter sentinel'
 const nativeFetch=()=>{throw Error('Unexpected native fetch');};
 Object.defineProperty(sandbox,'navigator',{get:()=>nativeNavigator,configurable:false});
 Object.defineProperty(sandbox,'fetch',{get:()=>nativeFetch,configurable:false});
-assert.throws(()=>vm.runInContext("'use strict'; globalThis.navigator={};",sandbox),/getter|read.only|cannot set/i);
+// Node's contextified global proxy can silently ignore writes to accessors.
+ // Reproduce strict assignment on a normal getter-only host as a separate red case.
+ const getterHost=Object.defineProperty({},'navigator',{get:()=>nativeNavigator,configurable:false});
+ assert.throws(()=>{getterHost.navigator={};},TypeError);
+ assert.ok(!/\bhost\.(?:navigator|fetch)\s*=/.test(fs.readFileSync(path.join(project,'play-host.js'),'utf8')),'Platform globals must never be assigned');
 function load(p){p=path.resolve(p);if(cache.has(p))return cache.get(p).exports;const mod={exports:{}};cache.set(p,mod);vm.runInContext('(function(require,module,exports){'+fs.readFileSync(p,'utf8')+'\n})',sandbox,{filename:p})(rel=>{assert.match(rel,/^\.\/[a-z-]+\.js$/);return load(path.resolve(path.dirname(p),rel))},mod,mod.exports);return mod.exports;}
 const a=load(path.join(project,'game.js'));await a.ready;assert.equal(sandbox.navigator,nativeNavigator);assert.equal(sandbox.fetch,nativeFetch);const e=a.engine,G=e.G;
 function tick(n=1){for(let j=0;j<n;j++){assert.equal(frames.size,1);const [i,cb]=frames.entries().next().value;frames.delete(i);now+=1000/60;cb(now);assert.equal(a.state.phase,'READY',a.state.error);}}
