@@ -9,6 +9,7 @@ function startPlay(wx,loadEngine,host=globalThis,options={}){
   host.fetch=createLocalFetch(wx);host.__h5WechatCreateOffscreenCanvas=createOffscreenFactory(wx,surface.canvas);
   // Browser gamepad API is not used on this platform; no fake audio or DOM.
   host.navigator={getGamepads:()=>[]};
+  if(options.audio){require('./audio-runtime.js').installAudio(wx,host);}
   const request=typeof surface.canvas.requestAnimationFrame==='function'?surface.canvas.requestAnimationFrame.bind(surface.canvas):host.requestAnimationFrame?.bind(host);
   const cancel=typeof surface.canvas.cancelAnimationFrame==='function'?surface.canvas.cancelAnimationFrame.bind(surface.canvas):host.cancelAnimationFrame?.bind(host);
   if(!request||!cancel)throw Error('Native frame scheduler unavailable');
@@ -29,6 +30,7 @@ function startPlay(wx,loadEngine,host=globalThis,options={}){
   function startEvent(e){
     if(!state.visible||state.phase!=='READY'||state.disposed||busy)return;
     try{
+      if(options.audio&&engine.audio.needsRecovery())engine.audio.keepAliveResume(true);
       const points=e?.changedTouches||e?.touches||[];
       const v=viewport(surface.width,surface.height);
       for(const p of points){
@@ -41,19 +43,20 @@ function startPlay(wx,loadEngine,host=globalThis,options={}){
     }catch(e){fail(e);}
   }
   function endEvent(e){if(touch)for(const p of e?.changedTouches||[])touch.end(p.identifier);}
-  const off=attachLifecycle(wx,{show(){if(state.disposed)return;state.visible=true;try{resize();if(state.phase==='READY')clock.start();}catch(e){fail(e);}},hide(){state.visible=false;clock.stop();if(touch)touch.reset();if(ui)ui.invalidate();},resize(){try{resize();}catch(e){fail(e);}},touch:startEvent});
+  const off=attachLifecycle(wx,{show(){if(state.disposed)return;state.visible=true;try{if(options.audio&&engine?.audio.ctx)engine.audio.setBackgroundDuck(false);resize();if(state.phase==='READY')clock.start();}catch(e){fail(e);}},hide(){state.visible=false;clock.stop();if(options.audio&&engine?.audio.ctx)engine.audio.setBackgroundDuck(true);if(touch)touch.reset();if(ui)ui.invalidate();},resize(){try{resize();}catch(e){fail(e);}},touch:startEvent});
   if(typeof wx.onTouchEnd!=='function'||typeof wx.onTouchCancel!=='function')throw Error('Native touch release APIs unavailable');
   wx.onTouchEnd(endEvent);wx.onTouchCancel(endEvent);
   const ready=(async()=>{
     try{
-      engine=loadEngine();engine.setStorageAdapter(createStorageAdapter(wx,persistence?'h5publisher:wechat:save-test:':'h5publisher:wechat:play-test:'));
+      engine=loadEngine();engine.setStorageAdapter(createStorageAdapter(wx,options.audio?'h5publisher:wechat:audio-test:':persistence?'h5publisher:wechat:save-test:':'h5publisher:wechat:play-test:'));
       await engine.ensureWorldForCycle(1);if(state.disposed)return state;
       scene=createScene(engine,surface);scene.select(0);engine.loadUserSettings();engine.loadSavedLocale();
       touch=createTouch(engine.setVirtualAction,engine.clearFrameInputs);
-      ui=createUI(engine,scene,surface,{persistence,start(){
+      ui=createUI(engine,scene,surface,{persistence,audio:!!options.audio,applyAudioSettings(){if(options.audio){const s=engine.G.settings;engine.audio.setVolumes(s.masterVol,s.musicVol,s.sfxVol);engine.audio.setMusicEnabled(s.musicEnabled);}},start(){
         state.blocked=null;
         if(!persistence){engine.startTestRun();return true;}
         if(busy)return false;
+        if(options.audio){engine.audio.init();if(!engine.audio.ctx||!engine.audio._bakeReady||!engine.audio.biomeGains)throw Error('Audio graph/bank not ready');}
         busy=true;runActive=false;
         pending=(async()=>{
           try{
@@ -61,7 +64,7 @@ function startPlay(wx,loadEngine,host=globalThis,options={}){
             if(data)await engine.restoreTestRun(data);
             else{await engine.ensureWorldForCycle(1);if(state.disposed)return;engine.startTestRun();engine.saveProgress(false);}
             if(state.disposed)return;
-            runActive=true;state.saveError=null;ui.navigate('preview');
+            runActive=true;state.saveError=null;if(options.audio){engine.audio.resetToExplore(engine.G.themeBlend.activeTheme);engine.audio.setBackgroundDuck(!state.visible);}ui.navigate('preview');
           }catch(e){state.saveError=String(e);console.error('[wechat-save]',e?.stack||e);ui.invalidate();}
           finally{busy=false;}
         })();
@@ -84,6 +87,6 @@ function startPlay(wx,loadEngine,host=globalThis,options={}){
       state.phase='READY';if(state.visible)clock.start();return state;
     }catch(e){fail(e);throw e;}
   })();ready.catch(()=>{});
-  return {state,ready,get ui(){return ui},get engine(){return engine},whenIdle:()=>pending,get touchCount(){return touch?.count||0},dispose(){state.disposed=true;clock.stop();if(touch)touch.reset();off();wx.offTouchEnd?.(endEvent);wx.offTouchCancel?.(endEvent);}};
+  return {state,ready,get ui(){return ui},get engine(){return engine},whenIdle:()=>pending,get touchCount(){return touch?.count||0},dispose(){state.disposed=true;clock.stop();if(options.audio&&engine?.audio.ctx){engine.audio.emergencySuspend();engine.audio.ctx.close?.();}if(touch)touch.reset();off();wx.offTouchEnd?.(endEvent);wx.offTouchCancel?.(endEvent);}};
 }
 module.exports={startPlay};

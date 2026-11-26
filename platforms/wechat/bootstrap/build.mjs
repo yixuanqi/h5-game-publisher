@@ -15,12 +15,13 @@ function git(cwd,...args){
 }
 function writeJson(p,data){fs.writeFileSync(p,JSON.stringify(data,null,2)+'\n');}
 const checkout=fs.realpathSync(process.argv[2]||path.join(root,'upstream'));
-const saveMode=process.argv[4]==='--save';
+const audioMode=process.argv[4]==='--audio';
+const saveMode=audioMode||process.argv[4]==='--save';
 const playMode=saveMode||process.argv[4]==='--play';
 const uiMode=playMode||process.argv[4]==='--ui';
 const renderMode=uiMode||process.argv[4]==='--render';
 if(process.argv[4]&&!renderMode)throw Error('Unknown build mode');
-const work=path.resolve(root,saveMode?'.work/wechat-save-46.1':playMode?'.work/wechat-play-46.1':uiMode?'.work/wechat-ui-46.1':renderMode?'.work/wechat-render-46.1':'.work/wechat-bootstrap-46.1');
+const work=path.resolve(root,audioMode?'.work/wechat-audio-46.1':saveMode?'.work/wechat-save-46.1':playMode?'.work/wechat-play-46.1':uiMode?'.work/wechat-ui-46.1':renderMode?'.work/wechat-render-46.1':'.work/wechat-bootstrap-46.1');
 const renderRoot=path.join(here,'../render');
 const uiRoot=path.join(here,'../ui');
 const playRoot=path.join(here,'../play');
@@ -51,13 +52,20 @@ try{
     fs.writeFileSync(path.join(work,'simulation.mjs'),generateSimulation(raw,saveMode));
     fs.appendFileSync(path.join(work,'engine-entry.mjs'),"\nexport * from './simulation.mjs';\nexport {setVirtualAction,clearFrameInputs} from './raw/src/input.js';\n");
   }
+  if(audioMode){
+    const {bakeBank}=await import('../audio/bake.mjs');
+    await bakeBank(raw,project);
+    fs.copyFileSync(path.join(here,'../audio/runtime.cjs'),path.join(project,'audio-runtime.js'));
+    fs.appendFileSync(path.join(work,'engine-entry.mjs'),"\nexport {audio} from './raw/src/audio.js';\n");
+  }
   writeJson(path.join(project,'game.json'),{deviceOrientation:'landscape'});
-  writeJson(path.join(project,'project.config.json'),{appid,compileType:'game',projectname:saveMode?'ashen-bell-vow-save-not-for-release':playMode?'ashen-bell-vow-play-not-for-release':uiMode?'ashen-bell-vow-ui-not-for-release':renderMode?'ashen-bell-vow-render-not-for-release':'ashen-bell-vow-bootstrap-not-for-release',miniprogramRoot:'./',setting:{es6:true,minified:false}});
+  writeJson(path.join(project,'project.config.json'),{appid,compileType:'game',projectname:audioMode?'ashen-bell-vow-audio-not-for-release':saveMode?'ashen-bell-vow-save-not-for-release':playMode?'ashen-bell-vow-play-not-for-release':uiMode?'ashen-bell-vow-ui-not-for-release':renderMode?'ashen-bell-vow-render-not-for-release':'ashen-bell-vow-bootstrap-not-for-release',miniprogramRoot:'./',setting:{es6:true,minified:false}});
   fs.writeFileSync(path.join(project,'game.js'),"'use strict';\nmodule.exports=require('./probe.js').startProbe(wx,()=>require('./engine.js'),globalThis,[25,25,26]);\n");
   if(renderMode)fs.writeFileSync(path.join(project,'game.js'),"'use strict';\nmodule.exports=require('./host.js').startRender(wx,()=>require('./engine.js'));\n");
   if(uiMode)fs.writeFileSync(path.join(project,'game.js'),"'use strict';\nmodule.exports=require('./ui-host.js').startUI(wx,()=>require('./engine.js'));\n");
   if(playMode)fs.writeFileSync(path.join(project,'game.js'),"'use strict';\nmodule.exports=require('./play-host.js').startPlay(wx,()=>require('./engine.js'));\n");
   if(saveMode)fs.writeFileSync(path.join(project,'game.js'),"'use strict';\nmodule.exports=require('./play-host.js').startPlay(wx,()=>require('./engine.js'),globalThis,{persistence:true});\n");
+  if(audioMode)fs.writeFileSync(path.join(project,'game.js'),"'use strict';\nmodule.exports=require('./play-host.js').startPlay(wx,()=>require('./engine.js'),globalThis,{persistence:true,audio:true});\n");
   // Scoped platform-only source transform: no general fake document, no game behavior changes.
   const approvedCanvasSites=new Map([['src/vfx.js',2],['src/renderParallax.js',2],['src/renderTerrain.js',1],['src/render/backdropCache.js',1]]);
   if(renderMode)for(const [name,count] of [['src/renderer.js',1],['src/render/glyphAtlas.js',3],['src/stampAtlas.js',1],['src/renderLighting.js',1]])approvedCanvasSites.set(name,count);
@@ -65,6 +73,10 @@ try{
   const canvasPlugin={name:'wechat-offscreen-canvas',setup(build){
     build.onLoad({filter:/\.js$/},async args=>{
       const rel=path.relative(raw,args.path).split(path.sep).join('/');
+      if(audioMode&&rel==='src/audio.js'){
+        const {transformAudio}=await import('../audio/transform.mjs');
+        return {contents:transformAudio(fs.readFileSync(args.path,'utf8')),loader:'js'};
+      }
       if(saveMode&&rel==='src/save.js'){
         const src=fs.readFileSync(args.path,'utf8');
         const {transformSave}=await import('../play/save-transform.mjs');
@@ -107,7 +119,7 @@ try{
   const manifest=snapshot(project);
   const bytes=manifest.reduce((n,x)=>n+fs.statSync(path.join(project,x.path)).size,0);
   if(bytes>4*1024*1024)throw Error('Bootstrap main package exceeds 4 MiB planning budget: '+bytes);
-  writeJson(path.join(work,'build-info.json'),{kind:saveMode?'wechat-save-not-release':playMode?'wechat-play-not-release':uiMode?'wechat-ui-not-release':renderMode?'wechat-render-not-release':'wechat-bootstrap-not-release',...spec,...(saveMode?{adapterVersion:'0.4.1-save',localeDomCallRemoved:true}:playMode?{adapterVersion:'0.4.0-play',localeDomCallRemoved:true}:uiMode?{adapterVersion:'0.3.0-ui',localeDomCallRemoved:true}:renderMode?{adapterVersion:'0.2.0-render'}:{}),framework,sourceTreeSha256:imported.sourceTreeSha256,rawFilesSha256:imported.sourceFilesSha256,projectFiles:manifest,projectFilesSha256:digestManifest(manifest),bytes,offscreenTransformed:[...transformed].sort(),engineInputs:Object.keys(result.metafile.inputs).length,fullMainGraphInputs:Object.keys(full.metafile.inputs).length,browserRefs,deviceEvidence:'not-run',releaseReady:false});
+  writeJson(path.join(work,'build-info.json'),{kind:audioMode?'wechat-audio-not-release':saveMode?'wechat-save-not-release':playMode?'wechat-play-not-release':uiMode?'wechat-ui-not-release':renderMode?'wechat-render-not-release':'wechat-bootstrap-not-release',...spec,...(audioMode?{adapterVersion:'0.4.2-audio',localeDomCallRemoved:true,audioBankSampleRate:24000}:saveMode?{adapterVersion:'0.4.1-save',localeDomCallRemoved:true}:playMode?{adapterVersion:'0.4.0-play',localeDomCallRemoved:true}:uiMode?{adapterVersion:'0.3.0-ui',localeDomCallRemoved:true}:renderMode?{adapterVersion:'0.2.0-render'}:{}),framework,sourceTreeSha256:imported.sourceTreeSha256,rawFilesSha256:imported.sourceFilesSha256,projectFiles:manifest,projectFilesSha256:digestManifest(manifest),bytes,offscreenTransformed:[...transformed].sort(),engineInputs:Object.keys(result.metafile.inputs).length,fullMainGraphInputs:Object.keys(full.metafile.inputs).length,browserRefs,deviceEvidence:'not-run',releaseReady:false});
   console.log('Built '+project+' ('+bytes+' bytes); full main graph compiled but not executed.');
 }finally{
   assertSnapshot(source,before,'Upstream source');

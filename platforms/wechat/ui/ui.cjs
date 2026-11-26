@@ -27,7 +27,7 @@ function createUI(engine,scene,surface,play=null){
     engine.saveUserSettings();
     const saved=engine.storage.getJSON(engine.SETTINGS_KEY);
     if(!saved||saved[key]!==value){G.settings[key]=old;message=L('设置保存失败','Settings write failed');}
-    else message=L('设置已保存（测试命名空间）','Settings saved (test namespace)');
+    else {if(play?.audio)play.applyAudioSettings();message=L('设置已保存（测试命名空间）','Settings saved (test namespace)');}
   }
   function changeLocale(){
     const old=G.locale,next=en()?'zh-CN':'en-US';engine.setLocale(next,true);
@@ -68,7 +68,7 @@ function createUI(engine,scene,surface,play=null){
     if(play){
       for(const [id,label,x,y] of [['up',L('上','Up'),41,228],['down',L('下','Down'),41,318],['dash',L('闪避','Dash'),644,226],['interact',L('交互','Use'),644,179],['heal',L('灯油','Heal'),710,179],['seal',L('墨印','Seal'),776,179]])
         btn(id,label,x,y,55,40,()=>{},true);
-      text(play.persistence?L('存档测试 · 音频未启用','Save test · audio disabled'):L('操作测试 · 音频及进度保存未启用','Gameplay test · audio/save not enabled'),282,365,12,'#aab8c3',350);
+      text(play.audio?L('音频及存档测试 · 不可提审','Audio/save test · not for release'):play.persistence?L('存档测试 · 音频未启用','Save test · audio disabled'):L('操作测试 · 音频及进度保存未启用','Gameplay test · audio/save not enabled'),282,365,12,'#aab8c3',350);
     }else{
       text(L('战斗触控尚未接通','Combat controls not connected'),12,329,12,'#aab8c3');
       ['祭坛','铸钟殿','霜骸圣脊'].forEach((label,i)=>btn('scene-'+i,en()?['Altar','Foundry','Frost'][i]:label,282+i*145,350,137,31,()=>scene.select(i)));
@@ -117,7 +117,7 @@ function createUI(engine,scene,surface,play=null){
       btn(key+'-minus','−',478,y,118,32,()=>changeSetting(key,Math.max(0,Math.round((v-.05)*100)/100)),v>0);
       btn(key+'-plus','+',614,y,118,32,()=>changeSetting(key,Math.min(1,Math.round((v+.05)*100)/100)),v<1);
     }
-    text(message||L('音量与震动仅保存设置，实际效果待 V0.4。','Audio/haptics settings only; effects pending V0.4.'),112,315,13,'#b8c7d1',620);
+    text(message||(play?.audio?L('音量实时应用 · 震动映射待真机验证','Live volume · device haptics unverified'):L('音量与震动仅保存设置，实际效果待 V0.4。','Audio/haptics settings only; effects pending V0.4.')),112,315,13,'#b8c7d1',620);
   }
   function pause(){
     panel(L('暂停 · 界面测试','Pause · UI preview'));
