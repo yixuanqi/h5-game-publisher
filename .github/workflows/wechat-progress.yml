@@ -38,12 +38,17 @@ jobs:
       - run: node platforms/wechat/progress/smoke.mjs
       - uses: actions/upload-artifact@v4
         with:
-          name: ashen-v46.1-wechat-progress-V0.4d-NOT-FOR-RELEASE
+          name: ashen-v46.1-wechat-V0.4.4-project-NOT-FOR-RELEASE
+          path: .work/wechat-progress-46.1/project/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ashen-v46.1-wechat-V0.4.4-test-report
           path: |
-            .work/wechat-progress-46.1/project/
             .work/wechat-progress-46.1/build-info.json
             .work/wechat-progress-46.1/progress-report.json
             .work/wechat-progress-46.1/screenshots/
-          include-hidden-files: true
           if-no-files-found: error
           retention-days: 14

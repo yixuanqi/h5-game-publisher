@@ -6,10 +6,12 @@ const {createUI,viewport,hit}=require('./ui.js');
 const {createTouch,ACTIONS}=require('./touch.js');
 function startPlay(wx,loadEngine,host=globalThis,options={}){
   const surface=createSurface(wx),ctx=surface.ctx;
-  host.fetch=createLocalFetch(wx);host.__h5WechatCreateOffscreenCanvas=createOffscreenFactory(wx,surface.canvas);
-  // Browser gamepad API is not used on this platform; no fake audio or DOM.
-  host.navigator={getGamepads:()=>[]};
-  if(options.progress&&typeof wx.vibrateShort==='function')host.navigator.vibrate=pattern=>{const ms=Array.isArray(pattern)?pattern.reduce((a,v,i)=>a+(i%2===0?Number(v)||0:0),0):Number(pattern)||0;if(ms<=0)return false;wx.vibrateShort({type:ms>=45?'heavy':ms>=20?'medium':'light',fail:()=>{}});return true;};
+  host.__h5WechatFetch=createLocalFetch(wx);host.__h5WechatCreateOffscreenCanvas=createOffscreenFactory(wx,surface.canvas);
+  // Never overwrite platform-owned getter-only navigator or fetch properties.
+  // The bundler binds free identifiers in engine.js to these private adapters.
+  const nav={getGamepads:()=>[],userAgent:'MicroMessenger',maxTouchPoints:5};
+  if(options.progress&&typeof wx.vibrateShort==='function')nav.vibrate=pattern=>{const ms=Array.isArray(pattern)?pattern.reduce((a,v,i)=>a+(i%2===0?Number(v)||0:0),0):Number(pattern)||0;if(ms<=0)return false;wx.vibrateShort({type:ms>=45?'heavy':ms>=20?'medium':'light',fail:()=>{}});return true;};
+  host.__h5WechatNavigator=Object.freeze(nav);
   if(options.audio){require('./audio-runtime.js').installAudio(wx,host);}
   const request=typeof surface.canvas.requestAnimationFrame==='function'?surface.canvas.requestAnimationFrame.bind(surface.canvas):host.requestAnimationFrame?.bind(host);
   const cancel=typeof surface.canvas.cancelAnimationFrame==='function'?surface.canvas.cancelAnimationFrame.bind(surface.canvas):host.cancelAnimationFrame?.bind(host);
