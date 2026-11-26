@@ -35,6 +35,9 @@ jobs:
       - name: Install verified official Windows DevTools
         shell: pwsh
         run: ./platforms/wechat/devtools/install.ps1
+      - name: Initialize real IDE profile on first launch
+        shell: pwsh
+        run: ./platforms/wechat/devtools/warmup.ps1
       - name: Execute official CLI and MCP fixture gate
         run: node platforms/wechat/devtools/probe.mjs
       - uses: actions/upload-artifact@v4

@@ -54,8 +54,23 @@ try{
   assert.equal(report.cliHelp.code,0,'CLI help failed/timed out');
   assert.match(fs.readFileSync(path.join(out,'cli-help.log'),'utf8'),/open|auto|islogin/i);
   report.checks.cliHelp=true;
+  const warm=JSON.parse(fs.readFileSync(path.join(out,'warmup-report.json'),'utf8'));
+  assert.equal(warm.profileReady,true,'IDE first launch did not create profile');
+  report.checks.ideProfileReady=true;
   assert.equal(await listening(),false,'Unexpected pre-existing automation listener');
-  report.open=await command('cli-auto',['auto','--project',project,'--auto-port',String(port)],45000);
+  report.open=await command('cli-auto',['auto','--project',project,'--auto-port',String(port)],60000);
+  const cliOutput=fs.readFileSync(path.join(out,'cli-auto.log'),'utf8');
+  // Vendor CLI can return code 0 even after initialize error. Preserve and classify the evidence.
+  if(/ENOENT[^\n]*\.cli|initialize error/i.test(cliOutput)){
+    report.blocker='CLI_INITIALIZATION_FAILED: profile/path mismatch or cold-start failure';
+    throw Error(report.blocker);
+  }
+  if(/服务端口已关闭|service port[^\n]*(?:disabled|closed|not enabled)|服务端口未开启/i.test(cliOutput)){
+    report.blocker='SERVICE_PORT_AUTHORIZATION_REQUIRED';throw Error(report.blocker);
+  }
+  if(/请先登录|not logged in|not login|please log in|please login/i.test(cliOutput)){
+    report.blocker='LOGIN_REQUIRED';throw Error(report.blocker);
+  }
   let connected=false;for(let i=0;i<25;i++){if(await listening()){connected=true;break;}await pause(1000);}
   report.checks.automationPort=connected;
   if(!connected){report.blocker='Official CLI did not expose automation port; inspect CLI log for login/service-port/desktop requirements';throw Error(report.blocker);}
