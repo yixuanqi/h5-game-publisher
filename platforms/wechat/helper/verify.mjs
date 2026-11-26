@@ -50,7 +50,7 @@ try{
   page.on('console',m=>observed.push({type:m.type(),text:m.text()}));
   page.on('pageerror',e=>errors.push(String(e)));
   await page.goto(url,{waitUntil:'domcontentloaded',timeout:30000});
-  let logged=false;
+  let logged=false,storage=null;
   for(let i=0;i<20;i++){
     const result=await client.callTool({name:'get_logs',arguments:{}},undefined,{timeout:10000});
     write('mcp-logs.json',result);
@@ -59,8 +59,12 @@ try{
   }
   write('browser-console.json',{observed,errors});
   await page.screenshot({path:path.join(out,'browser-preview.png')});
-  assert.ok(logged,'Fixture ready marker missing from MCP log stream');assert.equal(errors.length,0,errors.join('\n'));report.checks.fixtureCanvasStorageAndLog=true;
+  const expected=observed.filter(x=>x.text.includes('PUBLISHER_HELPER_STORAGE_051A ')).map(x=>{try{return JSON.parse(x.text.split('PUBLISHER_HELPER_STORAGE_051A ')[1]);}catch{return null;}}).filter(Boolean);
+  storage=expected.at(-1)||null;report.storage=storage;report.checks.fixtureBrowserExecution=observed.some(x=>x.text.includes('PUBLISHER_HELPER_FIXTURE_READY_051A'));report.checks.mcpLog=logged;
+  console.log('[fixture diagnostics]',JSON.stringify({storage,logged,browserReady:report.checks.fixtureBrowserExecution,errors,tail:observed.slice(-12)}));
+  assert.ok(report.checks.fixtureBrowserExecution,'Fixture ready marker missing from browser console');assert.equal(errors.length,0,errors.join('\n'));
   const capture=await client.callTool({name:'capture_screenshot',arguments:{format:'image/png',output:'data'}},undefined,{timeout:30000});
+  console.log('[capture receipt]',JSON.stringify({isError:capture.isError,content:capture.content?.map(c=>({type:c.type,mimeType:c.mimeType,text:c.type==='text'?c.text?.slice(0,500):undefined}))}));
   assert.ok(!capture.isError,'capture_screenshot failed');
   const image=capture.content?.find(c=>c.type==='image'&&typeof c.data==='string');
   if(image){const buf=Buffer.from(image.data,'base64');assert.ok(buf.length>100);write('mcp-screenshot-meta.json',{mimeType:image.mimeType,bytes:buf.length});fs.writeFileSync(path.join(out,'mcp-screenshot.'+(image.mimeType==='image/jpeg'?'jpg':'png')),buf);}
@@ -69,6 +73,8 @@ try{
     write('mcp-screenshot-response.json',capture);throw Error('MCP screenshot did not return an image content block');
   }
   report.checks.mcpScreenshot=true;
+  assert.ok(logged,'Fixture ready marker missing from MCP log stream');
+  assert.ok(storage?.immediate===true&&storage?.removed===true,'Helper sync storage semantics differ from WeChat');report.checks.fixtureSyncStorage=true;
   report.result='pass';
 }catch(e){report.result='fail';report.error=String(e?.stack||e);console.error(report.error);process.exitCode=1;}
 finally{

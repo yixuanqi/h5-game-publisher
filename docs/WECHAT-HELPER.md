@@ -5,3 +5,7 @@ Freeze the V0.4.4 diagnostic at 5e9a0282fb4af06f123ba3b2e9a0c1dc11544306. No ups
 Acceptance: actual CLI version/help, MCP initialize and tool schema discovery, run_game returns loopback URL, browser opens and executes fixture Canvas/storage code, get_logs returns real ready marker, screenshot returned by MCP. On failure keep diagnostics and fail CI; no silent fallback or fake proof. Browser helper is a compatibility runtime, NOT official DevTools. Actual CLI preview subcommand invocation, real Ashen V46.1 adapter smoke, touch automation and runtime failure comparison are next slice V0.5.1b; official DevTools via Windows runner / MCP is V0.5.1c. Do not mistake any fixture screenshot for submission materials.
 
 Local: Node 22, `npm install --prefix platforms/wechat/helper --ignore-scripts`, `platforms/wechat/helper/node_modules/.bin/playwright install chromium`, `node platforms/wechat/helper/verify.mjs`. Evidence in .work/wechat-helper-051a. No game project edits.
+
+
+## Initial Red run 45831182867
+Actual package installation, CLI version/help, MCP handshake and run_game succeeded. Chromium drew the fixture, then wx sync storage roundtrip failed, before the ready marker. The follow-up test records the actual storage value, retries the same synchronous contract after initialization, separates browser and MCP logs, and attempts MCP screenshot even if log forwarding fails. Sync storage mismatch still fails the full gate; no production code changes.
