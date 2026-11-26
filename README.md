@@ -111,3 +111,7 @@ AAB quality checks use pinned Bundletool 1.18.3 and inspect actual packaged mani
 ## v0.3.3 — Tested artifact promotion
 
 CI builds and tests same-signer higher-version debug upgrades and emits release-evidence.json. The manual **Android release candidate** workflow promotes the exact approved AAB from a fresh fully green CI on the same main SHA; default rehearsal uses a disposable key. Actual upload-key signing requires a separately configured per-game environment and explicit confirmation. No automatic Google Play upload. Approved npm lock is committed. See docs/ANDROID-RELEASE.md for instructions and limits.
+
+## WeChat candidate evidence interface
+
+Contract and promotion gate for game-release-materials V0.3.0-c: [WECHAT-EVIDENCE.md](docs/WECHAT-EVIDENCE.md). No WeChat build or device acceptance yet; Android workflow unchanged.
