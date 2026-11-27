@@ -25,11 +25,12 @@ function timerPair(host){
   return {set,clear};
 }
 
-export function startOriginalEntry(wx,loadEngine,html,layoutPlan,host=globalThis){
+export function startOriginalEntry(wx,loadEngine,html,layoutPlan,layoutRequirements,host=globalThis){
   if(!wx||typeof wx!=='object')throw Error('wx runtime required');
   if(typeof loadEngine!=='function')throw Error('engine loader required');
   if(typeof html!=='string'||!html.includes('id="gameCanvas"'))throw Error('Frozen HTML payload required');
   if(!layoutPlan||layoutPlan.schema!==1||!Array.isArray(layoutPlan.rules))throw Error('Precompiled CSS layout plan required');
+  if(!layoutRequirements||layoutRequirements.schema!==1||!layoutRequirements.backends)throw Error('Layout capability contract required');
 
   const {window,document}=parseHTML(html);
   const canvas=installWxDomCanvas(document,wx);
@@ -75,7 +76,10 @@ export function startOriginalEntry(wx,loadEngine,html,layoutPlan,host=globalThis
     wxWebAssembly:'pending',
     cssPlanRules:layoutPlan.rules.length,
     cssPlanReady:true,
-    computedStyle:'source-plan'
+    computedStyle:'source-plan',
+    layoutCoverage:layoutRequirements.backends.floatPigment0105?.compatible===true?'complete':'partial',
+    layoutMissing:[...(layoutRequirements.backends.floatPigment0105?.missing??[])],
+    alternativeLayoutCandidate:layoutRequirements.backends.taffy0160?.status??'not-evaluated'
   };
   let timer=null,disposed=false,engine;
 
@@ -127,6 +131,7 @@ export function startOriginalEntry(wx,loadEngine,html,layoutPlan,host=globalThis
     window,
     document,
     layoutPlan,
+    layoutRequirements,
     computedStyle,
     screen:canvas.screen,
     canvasBridge:canvas.bridge,
