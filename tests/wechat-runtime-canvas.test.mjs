@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {installCanvasBridge} from '../platforms/wechat/runtime/canvas-bridge.mjs';
+import {createNavigatorBridge} from '../platforms/wechat/runtime/navigator-bridge.mjs';
 function dom(){
   function element(localName){
     const attrs=new Map();return {localName,getAttribute:k=>attrs.get(k)??null,setAttribute:(k,v)=>attrs.set(k,String(v)),removeAttribute:k=>attrs.delete(k)};
@@ -32,4 +33,13 @@ test('reject missing native context or aliased native surface',()=>{
   const d=dom(),s=backend(300,150);installCanvasBridge(d,()=>s);
   d.screen.getContext('2d');assert.throws(()=>d.createElement('canvas').getContext('2d'),/Independent/);
   const e=dom();installCanvasBridge(e,()=>({getContext:()=>null}));assert.throws(()=>e.screen.getContext('2d'),/unavailable/);
+});
+
+test('Mini Game navigator exposes only truthful passive environment fields',()=>{
+  const ios=createNavigatorBridge({platform:'ios',system:'iOS 18.0',language:'zh_CN',wechatVersion:'8.0.50'});
+  assert.match(ios.userAgent,/iPhone/);assert.match(ios.userAgent,/MicroMessenger/);assert.equal(ios.platform,'iPhone');assert.equal(ios.maxTouchPoints,1);assert.equal(ios.language,'zh-CN');
+  assert.equal(ios.standalone,false);assert.equal(ios.onLine,true);
+  for(const key of ['serviceWorker','clipboard','getGamepads','vibrate'])assert.equal(key in ios,false,key+' must stay absent until mapped');
+  const android=createNavigatorBridge({platform:'android',system:'Android 15'});
+  assert.match(android.userAgent,/Android Mobile/);assert.equal(android.maxTouchPoints,1);
 });

@@ -10,6 +10,7 @@ import {build} from 'esbuild';
 import {exportGame} from '../../../scripts/import-blog.mjs';
 import {snapshot,assertSnapshot,assertDisjoint,gitBlob,sha256} from '../../../scripts/source-integrity.mjs';
 import {installCanvasBridge} from './canvas-bridge.mjs';
+import {createNavigatorBridge} from './navigator-bridge.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..');
 const spec=JSON.parse(fs.readFileSync(path.join(root,'platforms/wechat/bootstrap/compatibility.json'),'utf8'));
 const checkout=fs.realpathSync(process.argv[2]||'upstream'),source=path.join(checkout,'docs',spec.game);
@@ -23,14 +24,19 @@ const before=snapshot(source);
 fs.mkdirSync(out,{recursive:true});
 const report={stage:'0.5.2b-canvas-spike',sourceSha:spec.sourceSha,framework:git(root,'rev-parse','HEAD'),result:'fail',backend:'Skia / Node diagnostic',officialDevTools:'not-run',gameplayParity:'not-run',releaseReady:false};
 let rawBefore;
-function attempt(code,html,enabled){
+function attempt(code,html,{canvas=false,navigator=false}={}){
   const {window,document}=parseHTML(html);
-  const bridge=enabled?installCanvasBridge(document,(w,h)=>createCanvas(w,h)):null;
-  const context=vm.createContext({window,document});
+  const bridge=canvas?installCanvasBridge(document,(w,h)=>createCanvas(w,h)):null;
+  const nav=navigator?createNavigatorBridge({platform:'android',system:'Android 14',language:'zh_CN',wechatVersion:'8.0'}):undefined;
+  if(nav){
+    try{Object.defineProperty(window,'navigator',{configurable:true,value:nav});}
+    catch{try{window.navigator=nav;}catch{}}
+  }
+  const context=vm.createContext({window,document,...(nav?{navigator:nav}:{})});
   let outcome;
   try{vm.runInContext(code,context,{timeout:5000,filename:'original-main.bundle.js'});outcome={status:'returned-sync-only'};}
   catch(e){outcome={status:'blocked',error:String(e),stack:String(e.stack).split('\n').slice(0,14)};}
-  return {...outcome,stats:bridge?{...bridge.stats}:null,bootVerified:false,cssLayoutVerified:false};
+  return {...outcome,stats:bridge?{...bridge.stats}:null,navigator:nav?{userAgent:nav.userAgent,platform:nav.platform,maxTouchPoints:nav.maxTouchPoints,serviceWorker:'serviceWorker' in nav}:null,bootVerified:false,cssLayoutVerified:false};
 }
 try{
   const imported=exportGame(spec.game,checkout,raw);rawBefore=snapshot(raw);
@@ -39,11 +45,15 @@ try{
   const bundle=await build({absWorkingDir:raw,entryPoints:['src/main.js'],bundle:true,write:false,format:'iife',platform:'browser',target:'es2018',metafile:true,logLevel:'silent'});
   const code=bundle.outputFiles[0].text;report.bundleSha256=sha256(code);report.modules=Object.keys(bundle.metafile.inputs).length;
   assert.ok(bundle.metafile.inputs['src/main.js']);
-  report.red=attempt(code,html,false);
+  report.red=attempt(code,html);
   assert.match(report.red.error||'',/createRadialGradient/,'Frozen Red blocker changed; inspect before adapting');
-  report.green=attempt(code,html,true);
-  assert.ok(report.green.stats.contexts>0&&report.green.stats.radialGradients>0,'No real context/gradient reached in original entry');
-  assert.doesNotMatch(report.green.error||'',/Cannot read properties of null \(reading 'createRadialGradient'\)/,'Original blocker persists');
+  report.canvasOnly=attempt(code,html,{canvas:true});
+  assert.ok(report.canvasOnly.stats.contexts>0&&report.canvasOnly.stats.radialGradients>0,'No real context/gradient reached in original entry');
+  assert.match(report.canvasOnly.error||'',/navigator is not defined/,'Expected navigator Red blocker changed; inspect before adapting');
+  report.green=attempt(code,html,{canvas:true,navigator:true});
+  assert.ok(report.green.stats.contexts>0&&report.green.stats.radialGradients>0,'Navigator slice lost native Canvas progress');
+  assert.equal(report.green.navigator.serviceWorker,false,'Mini Game navigator must not advertise ServiceWorker');
+  assert.doesNotMatch(report.green.error||'',/navigator is not defined/,'Navigator blocker persists');
   // Independent native raster evidence, not a screenshot of the game or a visual parity result.
   const {document}=parseHTML('<html><body><canvas id="screen" width="32" height="32"></canvas></body></html>');
   const bridge=installCanvasBridge(document,(w,h)=>createCanvas(w,h));
