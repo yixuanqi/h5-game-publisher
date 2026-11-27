@@ -24,7 +24,8 @@ export function measureRuns(ctx,runs,spacing){
     const m=ctx.measureText(run.text),a=m.fontBoundingBoxAscent,d=m.fontBoundingBoxDescent;
     if(!Number.isFinite(a+d)||a+d<=0)throw Error('Font line metrics unavailable: '+run.font);
     ascent=Math.max(ascent,a);descent=Math.max(descent,d);
-    for(const ch of Array.from(run.text))textWidth+=ctx.measureText(ch).width+spacing;
+    // Measure the complete run to preserve kerning and shaping advances.
+    textWidth+=m.width+Array.from(run.text).length*spacing;
   }
   if(!runs.length)throw Error('Empty text control not supported');
   return {ascent,descent,textWidth};
@@ -32,6 +33,20 @@ export function measureRuns(ctx,runs,spacing){
 export function drawRuns(ctx,runs,x,y,spacing){
   for(const run of runs){
     ctx.font=run.font;
-    for(const ch of Array.from(run.text)){ctx.fillText(ch,x,y);x+=ctx.measureText(ch).width+spacing;}
+    const chars=Array.from(run.text);
+    if(!spacing){ctx.fillText(run.text,x,y);x+=ctx.measureText(run.text).width;continue;}
+    // Prefer the host's text spacing capability when it is actually exposed.
+    if(typeof ctx.letterSpacing==='string'){
+      const old=ctx.letterSpacing;ctx.letterSpacing=spacing+'px';
+      try{ctx.fillText(run.text,x,y);}finally{ctx.letterSpacing=old;}
+      x+=ctx.measureText(run.text).width+chars.length*spacing;continue;
+    }
+    // Bounded fallback: use shaped prefix advances rather than independent glyph widths.
+    let prefix='';
+    for(let i=0;i<chars.length;i++){
+      const ch=chars[i];prefix+=ch;
+      ctx.fillText(ch,x+ctx.measureText(prefix).width-ctx.measureText(ch).width+i*spacing,y);
+    }
+    x+=ctx.measureText(run.text).width+chars.length*spacing;
   }
 }

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {fontRuns,measureRuns,drawRuns} from '../platforms/wechat/layout/font-runs.mjs';
 import {layoutRow,flattenRow} from '../platforms/wechat/layout/paint-row.mjs';
 const ctx={measureText:s=>({width:s.length*10,fontBoundingBoxAscent:8,fontBoundingBoxDescent:2})},env={width:200,height:100};
 const leaf=(key,text,extra={})=>({key,text,children:[],style:{'font-size':'10px','letter-spacing':'0',...extra}});
@@ -11,4 +12,13 @@ test('nested row intrinsic sizes, center alignment and space-between',()=>{
   assert.equal(v.brand.x,10);assert.equal(v.brand.y,6);
   assert.equal(v.group.x,165);assert.equal(v.a.x,165);assert.equal(v.b.x,180);assert.equal(v.b.y,6);
   assert.throws(()=>layoutRow(ctx,tree,30,env),/shrink\/wrap/);
+});
+
+test('whole-run measurement preserves Latin kerning and spacing',()=>{
+  const m={font:'',measureText(text){return {width:text==='AV'?17:[...text].length*10,fontBoundingBoxAscent:8,fontBoundingBoxDescent:2};}};
+  const runs=fontRuns('AV',{'font-family':'serif'},10);
+  assert.equal(measureRuns(m,runs,2).textWidth,21);
+  const calls=[];m.fillText=(...args)=>calls.push(args);
+  drawRuns(m,runs,0,10,2);
+  assert.deepEqual(calls,[['A',0,10],['V',9,10]]);
 });

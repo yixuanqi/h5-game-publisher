@@ -54,7 +54,7 @@ try{
             function visit(e,key){
               if(getComputedStyle(e).display==='none')return [];
               const b=e.getBoundingClientRect();
-              return [{key,x:b.x-root.x,y:b.y-root.y,width:b.width,height:b.height},...[...e.children].flatMap((c,i)=>visit(c,key+'/'+i))];
+              const style=getComputedStyle(e);return [{key,x:b.x-root.x,y:b.y-root.y,width:b.width,height:b.height,font:style.fontFamily,fontSize:style.fontSize,letterSpacing:style.letterSpacing,weight:style.fontWeight},...[...e.children].flatMap((c,i)=>visit(c,key+'/'+i))];
             }
             return visit(p,'root');
           });
@@ -65,6 +65,22 @@ try{
           const canvas=createCanvas(Math.ceil(layout.width),Math.ceil(layout.height)),draw=canvas.getContext('2d');paintRow(draw,layout,env);
           fs.writeFileSync(path.join(out,name+'-'+label+'-independent.png'),canvas.toBuffer('image/png'));
           await page.locator(selector).screenshot({path:path.join(out,name+'-'+label+'-browser.png')});
+          const cdp=await ctx.newCDPSession(page);
+          try{
+            await cdp.send('DOM.enable');await cdp.send('CSS.enable');
+            const {root:domRoot}=await cdp.send('DOM.getDocument');
+            const {nodeId}=await cdp.send('DOM.querySelector',{nodeId:domRoot.nodeId,selector});
+            const {node}=await cdp.send('DOM.describeNode',{nodeId,depth:4});
+            const fonts=[];
+            async function visitNode(n){
+              if(n.nodeType===1){
+                const {nodeId:id}=await cdp.send('DOM.pushNodesByBackendIdsToFrontend',{backendNodeIds:[n.backendNodeId]}).then(r=>({nodeId:r.nodeIds[0]}));
+                if(id){const result=await cdp.send('CSS.getPlatformFontsForNode',{nodeId:id});if(result.fonts.length)fonts.push({tag:n.nodeName,attributes:n.attributes,fonts:result.fonts});}
+              }
+              for(const c of n.children??[])await visitNode(c);
+            }
+            await visitNode(node);bar.referenceFonts=fonts;
+          }catch(e){bar.fontDiagnosticError=String(e);}finally{await cdp.detach();}
           const a=flattenRow(layout);assert.deepEqual(a.map(x=>x.key),ref.map(x=>x.key));
           bar.rows=a.map((x,i)=>({key:x.key,text:x.text,predicted:x,reference:ref[i],delta:Math.max(...['x','y','width','height'].map(k=>Math.abs(x[k]-ref[i][k])))}));
           bar.maxDelta=Math.max(...bar.rows.map(x=>x.delta));bar.pass=bar.maxDelta<=4;

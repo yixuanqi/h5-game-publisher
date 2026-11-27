@@ -2,18 +2,24 @@
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {createCanvas,GlobalFonts} from '@napi-rs/canvas';
-const languages={han:'zh-cn',kana:'ja',hangul:'ko'};
+const languages={han:'zh-cn',kana:'ja',hangul:'ko',default:'en'};
+// Browser-like Linux generic defaults are a host policy, not game-specific data.
+const genericAliases={serif:'Times New Roman','sans-serif':'Arial',monospace:'Courier New'};
 export function makeDiagnosticFonts(){
   const choices=new Map(),evidence=[];
+  const installed=spawnSync('fc-list',['-f','%{family}\n'],{encoding:'utf8'});
+  if(installed.status!==0)throw Error('Cannot enumerate system font families');
+  const families=new Set(installed.stdout.split(/[\n,]/).map(v=>v.trim().toLowerCase()));
   function resolveFamily({script,family,weight}){
-    if(script==='default')return family;
     const lang=languages[script];if(!lang)throw Error('Unknown font script '+script);
     const key=[script,family,weight].join('|');if(choices.has(key))return choices.get(key);
     const names=family.split(',').map(s=>s.trim().replace(/^["']|["']$/g,'')).filter(Boolean);
     const generic=names.findLast(s=>['serif','sans-serif','monospace'].includes(s))??'sans-serif';
     // Fontconfig uses the authored family preference, language and script
     // coverage, rather than assuming that a browser family name exists in Skia.
-    const query=names.join(',')+':lang='+lang+':style='+(Number(weight)>=600?'Bold':'Regular');
+    const preferred=script==='default'?(names.find(n=>families.has(n.toLowerCase())||Object.hasOwn(genericAliases,n))??generic):names.join(',');
+    const requested=script==='default'?(genericAliases[preferred]??preferred):preferred;
+    const query=requested+':lang='+lang+':style='+(Number(weight)>=600?'Bold':'Regular');
     const r=spawnSync('fc-match',['-f','%{family}\n%{file}\n',query],{encoding:'utf8'});
     if(r.status!==0)throw Error('Fontconfig failed: '+r.stderr);
     let [matched,file]=r.stdout.trim().split('\n');
@@ -31,7 +37,7 @@ export function makeDiagnosticFonts(){
     // file if the requested family is absent. Do not distribute font files.
     if(typeof GlobalFonts.has==='function'&&!GlobalFonts.has(matched))GlobalFonts.registerFromPath(file);
     const resolved='"'+matched.replace(/"/g,'')+'"';
-    choices.set(key,resolved);evidence.push({script,family,weight,resolved,file});return resolved;
+    choices.set(key,resolved);evidence.push({script,family,weight,requested,resolved,file});return resolved;
   }
   function checkHan(){
     const family=resolveFamily({script:'han',family:'serif',weight:'400'}),canvas=createCanvas(64,64),ctx=canvas.getContext('2d');
