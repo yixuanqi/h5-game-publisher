@@ -12,7 +12,7 @@ function installValue(target,name,value){
   throw Error('Unable to install window.'+name);
 }
 
-export function createBrowserEnvironment({wx,window,canvas,host=globalThis,fetch,storage}={}){
+export function createBrowserEnvironment({wx,window,canvas,host=globalThis,fetch,storage,wallNow=Date.now}={}){
   if(!wx||typeof wx!=='object')throw Error('wx runtime required');
   if(!window||typeof window!=='object'||!window.document)throw Error('DOM window/document required');
   if(typeof fetch!=='function')throw Error('Packaged fetch adapter required');
@@ -21,7 +21,7 @@ export function createBrowserEnvironment({wx,window,canvas,host=globalThis,fetch
   try{
     viewport=installViewportBridge(window,wx);
     const navigator=createNavigatorFromWx(wx);
-    const performance=createPerformanceBridge(wx);
+    const performance=createPerformanceBridge(wx,{wallNow});
     const frame=createFrameScheduler(canvas,performance,host);
     const localStorage=createLocalStorageFacade(storage);
     const location=createLocationBridge();

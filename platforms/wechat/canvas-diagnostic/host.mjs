@@ -99,7 +99,7 @@ export function startCanvasDiagnostic(wx,loadEngine,html,layoutPlan,host=globalT
     state.checks++;
     state.moduleLoaded=window.__ABV_MODULE_LOADED__===true;
     state.booted=window.__ABV_BOOTED__===true;
-    if(evidence.state.playingReady){state.phase='CANVAS_PLAYING_OBSERVED';return;}
+    if(evidence.state.playingReady){state.phase='CANVAS_PLAYING_OBSERVED';host.console?.info('[H5PUBLISHER] Canvas playing observed',JSON.stringify({clockUnit:environment.performance.clockUnit,completedCallbacks:evidence.state.completedCallbacks,playingCallbacks:evidence.state.playingCallbacks}));return;}
     if(evidence.state.titleReady&&!state.syntheticDomStart){
       const button=document.getElementById('btn-start');
       if(!button||button.disabled)throw Error('Original start button unavailable');
@@ -107,7 +107,7 @@ export function startCanvasDiagnostic(wx,loadEngine,html,layoutPlan,host=globalT
       // Exercise the original click handler; not native touch or UI rendering evidence.
       button.dispatchEvent(new window.Event('click',{bubbles:true,cancelable:true}));
     }
-    if(state.checks>=600){state.phase='BOOT_TIMEOUT';state.error='Original Canvas playing evidence did not reach gate within bounded observation';host.console?.error('[H5PUBLISHER]',state.error);return;}
+    if(state.checks>=600){state.phase='BOOT_TIMEOUT';state.error='Original Canvas playing evidence did not reach gate within bounded observation';host.console?.error('[H5PUBLISHER]',state.error,JSON.stringify({clockUnit:environment.performance.clockUnit,moduleLoaded:state.moduleLoaded,booted:state.booted,canvas:evidence.state}));return;}
   }
 
   const ready=(async()=>{

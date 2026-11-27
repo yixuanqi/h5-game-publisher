@@ -4,7 +4,9 @@ const {performance}=require('node:perf_hooks'),{createCanvas}=require('@napi-rs/
 const {stageNodeProject}=require('./node-project.cjs');
 const sourceProject=path.resolve(process.argv[2]||'.work/wechat-canvas-diagnostic-052g/project');
 let staged,project=sourceProject;
-const out=path.resolve('.work/wechat-canvas-diagnostic-052g/evidence');fs.mkdirSync(out,{recursive:true});
+const clockUnit=process.env.WX_DIAG_CLOCK_UNIT||'ms';
+if(!['ms','us'].includes(clockUnit))throw Error('Unknown diagnostic clock unit');
+const out=path.resolve('.work/wechat-canvas-diagnostic-052g/evidence',clockUnit==='us'?'clock-us':'.');fs.mkdirSync(out,{recursive:true});
 let screen,seq=0;const frames=new Map(),storage=new Map();
 const originalTimer=setTimeout;
 globalThis.requestAnimationFrame=cb=>{const id=++seq;const timer=originalTimer(()=>{frames.delete(id);cb(performance.now());},16);frames.set(id,timer);return id;};
@@ -15,7 +17,7 @@ const wx={
  getWindowInfo:()=>({windowWidth:844,windowHeight:390,pixelRatio:1,screenWidth:844,screenHeight:390}),
  getSystemInfoSync:()=>({windowWidth:844,windowHeight:390,pixelRatio:1,platform:'android',system:'Android 14',language:'zh_CN',version:'8.0'}),
  getDeviceInfo:()=>({platform:'android',system:'Android 14'}),getAppBaseInfo:()=>({language:'zh_CN',version:'8.0'}),
- getPerformance:()=>({now:()=>performance.now()*1000}),
+ getPerformance:()=>({now:()=>performance.now()*(clockUnit==='us'?1000:1)}),
  getStorageSync:k=>storage.get(k)??'',setStorageSync:(k,v)=>storage.set(k,v),removeStorageSync:k=>storage.delete(k),
  getFileSystemManager:()=>({readFileSync:(name,enc)=>fs.readFileSync(path.join(project,name),enc)})
 };
@@ -27,7 +29,13 @@ let app,report={result:'fail',backend:'Node/Skia simulated wx API, not official 
 (async()=>{
  try{
   staged=stageNodeProject(sourceProject);project=staged.project;
-  app=require(path.join(project,'game.js'));const state=await app.ready;report.state=state;
+  app=require(path.join(project,'game.js'));
+  const wallStart=performance.now(),gameStart=app.environment.performance.now();
+  const state=await app.ready;report.state=state;
+  const wallElapsed=performance.now()-wallStart,gameElapsed=app.environment.performance.now()-gameStart;
+  report.clock={expected:clockUnit,detected:app.environment.performance.clockUnit,wallElapsed,gameElapsed};
+  assert.equal(report.clock.detected,clockUnit);
+  assert.ok(wallElapsed>100&&gameElapsed/wallElapsed>=0.9&&gameElapsed/wallElapsed<=1.1,'Game clock must track wall elapsed milliseconds');
   assert.equal(state.phase,'CANVAS_PLAYING_OBSERVED',state.error||state.phase);
   assert.equal(state.canvas.playingReady,true);
   assert.equal(globalThis.location,nativeLocation,'platform location must remain untouched');

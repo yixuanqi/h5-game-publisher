@@ -6,6 +6,10 @@ on:
       - 'platforms/wechat/canvas-diagnostic/**'
       - 'platforms/wechat/runtime/json-module-build.mjs'
       - 'platforms/wechat/runtime/isolated-window.mjs'
+      - 'platforms/wechat/runtime/performance-bridge.mjs'
+      - 'platforms/wechat/runtime/browser-environment.mjs'
+      - 'tests/wechat-performance-bridge.test.mjs'
+      - 'tests/wechat-browser-environment.test.mjs'
       - 'tests/wechat-isolated-window.test.mjs'
       - 'tests/wechat-json-module-build.test.mjs'
       - 'tests/wechat-canvas-diagnostic.test.mjs'
@@ -25,7 +29,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test tests/wechat-canvas-diagnostic.test.mjs tests/wechat-canvas-diagnostic-loader.test.mjs tests/wechat-json-module-build.test.mjs tests/wechat-isolated-window.test.mjs
+      - run: node --test tests/wechat-canvas-diagnostic.test.mjs tests/wechat-canvas-diagnostic-loader.test.mjs tests/wechat-json-module-build.test.mjs tests/wechat-isolated-window.test.mjs tests/wechat-performance-bridge.test.mjs tests/wechat-browser-environment.test.mjs
       - uses: actions/checkout@v4
         with:
           repository: yixuanqi/PhotoGallery
@@ -37,6 +41,7 @@ jobs:
       - run: node --test platforms/wechat/original-entry/css-plan-build.test.mjs
       - run: node platforms/wechat/canvas-diagnostic/build.mjs upstream
       - run: node --check .work/wechat-canvas-diagnostic-052g/project/game.js && node --check .work/wechat-canvas-diagnostic-052g/project/layout-plan.js && node platforms/wechat/canvas-diagnostic/host-probe.cjs
+      - run: WX_DIAG_CLOCK_UNIT=us node platforms/wechat/canvas-diagnostic/host-probe.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
