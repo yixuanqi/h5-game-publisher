@@ -3,8 +3,10 @@ import runtime from '../bootstrap/runtime.cjs';
 import {installWxDomCanvas} from '../runtime/wx-dom-canvas.mjs';
 import {createBrowserEnvironment} from '../runtime/browser-environment.mjs';
 import {createURLSearchParamsCtor} from '../runtime/url-search-params.mjs';
+import fpRuntime from '../runtime/float-pigment-runtime.cjs';
 
 const {createLocalFetch,createStorageAdapter}=runtime;
+const {instantiatePackagedWasm,createFloatPigmentBackend}=fpRuntime;
 
 function installPrivate(host,name,value,restore){
   const before=Object.getOwnPropertyDescriptor(host,name);
@@ -64,7 +66,9 @@ export function startOriginalEntry(wx,loadEngine,html,host=globalThis){
     releaseReady:false,
     visualParity:false,
     domPaint:'not-wired',
-    inputBridge:'not-wired'
+    inputBridge:'not-wired',
+    layoutBackend:'pending',
+    wxWebAssembly:'pending'
   };
   let timer=null,disposed=false,engine;
 
@@ -81,25 +85,45 @@ export function startOriginalEntry(wx,loadEngine,html,host=globalThis){
     state.booted=window.__ABV_BOOTED__===true;
     if(state.booted){state.phase='FIRST_FRAME';return;}
     if(state.checks>=100){state.phase='BOOT_TIMEOUT';state.error='Original entry did not reach __ABV_BOOTED__ within bounded observation';return;}
-    timer=timers.set(inspect,50);
   }
 
-  try{
-    engine=loadEngine();
-    state.moduleLoaded=window.__ABV_MODULE_LOADED__===true;
-    if(!state.moduleLoaded)throw Error('Original src/main.js did not set module marker');
-    state.phase='BOOTING';
-    inspect();
-  }catch(e){fail(e);}
+  let layoutBackend=null;
+  const ready=(async()=>{
+    try{
+      state.phase='WASM_LOADING';
+      const loaded=await instantiatePackagedWasm({host,path:'float-pigment-layout.wasm',imports:{}});
+      if(loaded.runtime!=='wx')throw Error('Original-entry diagnostic requires real WXWebAssembly runtime');
+      layoutBackend=createFloatPigmentBackend(loaded.instance);
+      state.wxWebAssembly='pass';
+      state.layoutBackend='float-pigment';
+      state.phase='LAYOUT_READY';
+
+      engine=loadEngine();
+      state.moduleLoaded=window.__ABV_MODULE_LOADED__===true;
+      if(!state.moduleLoaded)throw Error('Original src/main.js did not set module marker');
+      state.phase='BOOTING';
+      return await new Promise(resolve=>{
+        function wait(){
+          if(disposed||state.phase==='ERROR'||state.phase==='FIRST_FRAME'||state.phase==='BOOT_TIMEOUT'){resolve(state);return;}
+          inspect();
+          if(state.phase==='FIRST_FRAME'||state.phase==='BOOT_TIMEOUT'||state.phase==='ERROR'){resolve(state);return;}
+          timers.set(wait,55);
+        }
+        wait();
+      });
+    }catch(e){fail(e);return state;}
+  })();
 
   return {
     state,
+    ready,
     window,
     document,
     screen:canvas.screen,
     canvasBridge:canvas.bridge,
     environment,
-    engine,
+    get engine(){return engine;},
+    get layoutBackend(){return layoutBackend;},
     dispose(){
       if(disposed)return;
       disposed=true;
