@@ -25,7 +25,7 @@ const sourceBefore=snapshot(source);
 const report={stage:'0.5.2d-float-pigment-runtime-backend',result:'fail',framework:git(root,'rev-parse','HEAD'),sourceSha:spec.sourceSha,sourceIntegrity:'unknown',officialDevTools:'not-run',wxWebAssemblyRun:'not-run',releaseReady:false,parityReady:false,candidate:{...FLOAT_PIGMENT},limitations:['Host Node WebAssembly execution is not WeChat WXWebAssembly evidence.','The generated wx-wasm-fixture is importable evidence scaffolding, not a release project.','DOM/BOM mapping, paint/text and full game integration remain separate gates.']};
 try{
   const html=fs.readFileSync(path.join(source,'index.html'),'utf8'),css=fs.readFileSync(path.join(source,'styles.css'),'utf8'),saveUi=fs.readFileSync(path.join(source,'src/ui/hudCore.js'),'utf8');
-  report.sourceRequiresGrid=/id=["']save-slots-grid[#']/.test(html)&&/\.save-slots-grid\s*\{[\s\S]{0,500}?display\s*:\s*grid\s*;/m.test(css)&&/getElementById\(['"]save-slots-grid['"]\)/.test(saveUi)&&/innerHTML\s*=\s*['"]['"]/.test(saveUi);
+  report.sourceRequiresGrid=/id=["']save-slots-grid["']/.test(html)&&/\.save-slots-grid\s*\{[\s\S]{0,500}?display\s*:\s*grid\s*;/m.test(css)&&/getElementById\(['"]save-slots-grid['"]\)/.test(saveUi)&&/innerHTML\s*=\s*['"]['"]/.test(saveUi);
   assert.equal(report.sourceRequiresGrid,true,'Frozen V46.1 dynamic save UI Grid contract was not found');
   report.sourceEvidence={dynamicSaveSlots:true,cssGrid:true,sourceFiles:['index.html','styles.css','src/ui/hudCore.js']};
   const built=buildFloatPigmentWasm({vendor,workDir:buildDir,outFile:wasmPath});report.toolchain=built.toolchain;report.wasmBuildPass=true;report.wasmBuildElapsedMs=built.elapsedMs;report.wasm={bytes:built.bytes,sha256:built.sha256};
