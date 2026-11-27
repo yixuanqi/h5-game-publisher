@@ -6,6 +6,7 @@ import {createBrowserEnvironment} from '../runtime/browser-environment.mjs';
 import {createURLSearchParamsCtor} from '../runtime/url-search-params.mjs';
 import {createComputedStyleFacade} from '../runtime/computed-style-facade.mjs';
 import {createCanvasEvidence} from './evidence.mjs';
+import {installTouchOverlay} from './touch-overlay.mjs';
 
 const {createLocalFetch,createStorageAdapter}=runtime;
 
@@ -48,7 +49,8 @@ export function startCanvasDiagnostic(wx,loadEngine,html,layoutPlan,host=globalT
 
   const restore=[];
   const evidence=createCanvasEvidence({surface:canvas.screen,window,document,onError:fail});
-  const observedRequest=cb=>environment.requestAnimationFrame(timestamp=>{try{cb(timestamp);evidence.afterFrame();}catch(e){fail(e);throw e;}});
+  let touch=null;
+  const observedRequest=cb=>environment.requestAnimationFrame(timestamp=>{try{cb(timestamp);evidence.afterFrame();touch?.draw();if(touch)Object.assign(state.touch,touch.stats);}catch(e){fail(e);throw e;}});
   installWindowValue(window,'requestAnimationFrame',observedRequest);
   const aliases={
     __h5WechatWindow:window,
@@ -99,7 +101,10 @@ export function startCanvasDiagnostic(wx,loadEngine,html,layoutPlan,host=globalT
     state.checks++;
     state.moduleLoaded=window.__ABV_MODULE_LOADED__===true;
     state.booted=window.__ABV_BOOTED__===true;
-    if(evidence.state.playingReady){state.phase='CANVAS_PLAYING_OBSERVED';host.console?.info('[H5PUBLISHER] Canvas playing observed',JSON.stringify({clockUnit:environment.performance.clockUnit,completedCallbacks:evidence.state.completedCallbacks,playingCallbacks:evidence.state.playingCallbacks}));return;}
+    if(evidence.state.playingReady){
+      touch=installTouchOverlay({wx,window,document,surface:canvas.screen,viewport:environment.viewport,onError:fail});
+      state.inputBridge='native-touch-to-original-dom-diagnostic';state.touch={...touch.stats,router:touch.routerStats};
+      state.phase='CANVAS_PLAYING_OBSERVED';host.console?.info('[H5PUBLISHER] Canvas playing observed',JSON.stringify({clockUnit:environment.performance.clockUnit,completedCallbacks:evidence.state.completedCallbacks,playingCallbacks:evidence.state.playingCallbacks}));return;}
     if(evidence.state.titleReady&&!state.syntheticDomStart){
       const button=document.getElementById('btn-start');
       if(!button||button.disabled)throw Error('Original start button unavailable');
@@ -138,6 +143,7 @@ export function startCanvasDiagnostic(wx,loadEngine,html,layoutPlan,host=globalT
     layoutPlan,
     computedStyle,
     screen:canvas.screen,
+    get touch(){return touch;},
     canvasBridge:canvas.bridge,
     environment,
     get engine(){return engine;},
@@ -145,7 +151,7 @@ export function startCanvasDiagnostic(wx,loadEngine,html,layoutPlan,host=globalT
       if(disposed)return;
       disposed=true;
       if(timer!==null)timers.clear(timer);
-      environment.dispose();
+      touch?.dispose();environment.dispose();
       while(restore.length)restore.pop()();
       state.phase=state.phase==='ERROR'?'ERROR':'DISPOSED';
     }

@@ -17,7 +17,7 @@ export function canvasDecision(v){
   return v.phase==='CANVAS_PLAYING_OBSERVED'?'ready':'stop';
 }
 export function canvasGate(v){
-  if(canvasDecision(v)!=='ready'||v.moduleLoaded!==true||v.booted!==true||v.syntheticDomStart!==true||v.domPaint!=='not-wired'||v.inputBridge!=='not-wired')throw Error('Original Canvas runtime not ready');
+  if(canvasDecision(v)!=='ready'||v.moduleLoaded!==true||v.booted!==true||v.syntheticDomStart!==true||v.domPaint!=='not-wired'||!['not-wired','native-touch-to-original-dom-diagnostic'].includes(v.inputBridge))throw Error('Original Canvas runtime not ready');
   const c=v.canvas;
   if(c?.bootMarker!==true||c.moduleMarker!==true||c.titleReady!==true||c.playingReady!==true||!Number.isInteger(c.playingCallbacks)||c.playingCallbacks<30||!Number.isInteger(c.completedCallbacks)||c.completedCallbacks<c.playingCallbacks||!Array.isArray(c.samples))throw Error('Missing original frame evidence');
   for(const phase of ['title','playing']){

@@ -12,6 +12,7 @@ on:
       - 'tests/wechat-browser-environment.test.mjs'
       - 'tests/wechat-isolated-window.test.mjs'
       - 'tests/wechat-json-module-build.test.mjs'
+      - 'tests/wechat-touch-overlay.test.mjs'
       - 'tests/wechat-canvas-diagnostic.test.mjs'
       - 'tests/wechat-canvas-diagnostic-loader.test.mjs'
       - '.github/workflows/wechat-canvas-diagnostic.yml'
@@ -29,7 +30,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test tests/wechat-canvas-diagnostic.test.mjs tests/wechat-canvas-diagnostic-loader.test.mjs tests/wechat-json-module-build.test.mjs tests/wechat-isolated-window.test.mjs tests/wechat-performance-bridge.test.mjs tests/wechat-browser-environment.test.mjs
+      - run: node --test tests/wechat-touch-overlay.test.mjs tests/wechat-canvas-diagnostic.test.mjs tests/wechat-canvas-diagnostic-loader.test.mjs tests/wechat-json-module-build.test.mjs tests/wechat-isolated-window.test.mjs tests/wechat-performance-bridge.test.mjs tests/wechat-browser-environment.test.mjs
       - uses: actions/checkout@v4
         with:
           repository: yixuanqi/PhotoGallery

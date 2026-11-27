@@ -127,7 +127,7 @@ try{
   assertSnapshot(raw,rawBefore,'Raw frozen export');
   assertSnapshot(path.join(project,'data'),snapshot(path.join(raw,'data')),'Packaged world JSON');
 
-  writeJson(path.join(project,'diagnostic-contract.json'),{kind:'wechat-canvas-diagnostic-052g-not-release',sourceSha:spec.sourceSha,releaseReady:false,expectedStateGlobal:'__H5PUBLISHER_CANVAS_PROBE__',successPhase:'CANVAS_PLAYING_OBSERVED',layoutBackend:'intentionally-isolated',domPaint:'not-wired',inputBridge:'synthetic-DOM-start-only'});
+  writeJson(path.join(project,'diagnostic-contract.json'),{kind:'wechat-canvas-diagnostic-052g-not-release',sourceSha:spec.sourceSha,releaseReady:false,expectedStateGlobal:'__H5PUBLISHER_CANVAS_PROBE__',successPhase:'CANVAS_PLAYING_OBSERVED',layoutBackend:'intentionally-isolated',domPaint:'not-wired',inputBridge:'native-touch-to-original-dom-diagnostic',startup:'synthetic-DOM-start-only'});
   const manifest=snapshot(project);
   const bytes=manifest.reduce((n,x)=>n+fs.statSync(path.join(project,x.path)).size,0);
   if(bytes>4*1024*1024)throw Error('Original-entry diagnostic exceeds 4 MiB planning budget: '+bytes);
@@ -148,7 +148,7 @@ try{
     officialDevTools:'not-run',
     physicalDevice:'not-run',
     domPaint:'not-wired',
-    inputBridge:'not-wired',
+    inputBridge:'native-touch-to-original-dom-diagnostic',
     framework:git(root,'rev-parse','HEAD'),
     frameworkDirty:!!git(root,'status','--porcelain','--untracked-files=all'),
     sourceTreeSha256:imported.sourceTreeSha256,
