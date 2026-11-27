@@ -118,7 +118,7 @@ export async function evaluateFrozenFlexParents({source,backend,evidenceDir}){
             item.authored={mapped,edges,columnGap,rowGap};item.browserParent=ref.parent;item.reference=reference;item.actual=actual;
             item.deltas=actual.map((a,i)=>({index:i,x:Math.abs(a.x-reference[i].x),y:Math.abs(a.y-reference[i].y),width:Math.abs(a.width-reference[i].width),height:Math.abs(a.height-reference[i].height)}));
             item.maxDelta=Math.max(0,...item.deltas.flatMap(d=>[d.x,d.y,d.width,d.height]));item.pass=item.maxDelta<=report.geometryGatePx;
-            assert.ok(item.pass,selector+' float-pigment flex delta '+item.maxDelta+'px exceeds '+report.geometryGatePx+'px');
+            if(!item.pass)item.failure=selector+' float-pigment flex delta '+item.maxDelta+'px exceeds '+report.geometryGatePx+'px';
           }finally{
             for(const child of children)backend.freeNode(child);backend.freeNode(root);
           }
@@ -130,7 +130,7 @@ export async function evaluateFrozenFlexParents({source,backend,evidenceDir}){
             const rootHeightDelta=Math.abs(intrinsic.rootRect.height-contentHeight);
             const maxDelta=Math.max(rootHeightDelta,...deltas.flatMap(d=>[d.x,d.y,d.width,d.height]));
             item.intrinsic={reference,actual:intrinsic.rows.map(({measured,...x})=>x),deltas,rootContentHeight:{reference:contentHeight,actual:intrinsic.rootRect.height,delta:rootHeightDelta},maxDelta,pass:maxDelta<=report.intrinsicGeometryGatePx};
-            assert.ok(item.intrinsic.pass,selector+' independent intrinsic flex delta '+maxDelta+'px exceeds '+report.intrinsicGeometryGatePx+'px');
+            if(!item.intrinsic.pass)item.intrinsic.failure=selector+' independent intrinsic flex delta '+maxDelta+'px exceeds '+report.intrinsicGeometryGatePx+'px';
           }finally{intrinsic.free();}
           if(evidenceDir)await page.locator(selector).screenshot({path:path.join(evidenceDir,name+'-'+label+'-original.png')});
         };
