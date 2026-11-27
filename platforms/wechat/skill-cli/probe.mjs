@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
-import {skillVersion,argsFor,statusGate,unwrapResponse,responseGate,fixtureGate,wxWasmFixtureGate,imageTap,pendingDecision} from './contract.mjs';
+import {skillVersion,argsFor,statusGate,unwrapResponse,responseGate,fixtureGate,wxWasmReadDecision,wxWasmFixtureGate,imageTap,pendingDecision} from './contract.mjs';
 import {FLOAT_PIGMENT} from '../runtime/float-pigment-pin.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url)),root=path.resolve(here,'../../..');
 const opt=process.argv.slice(2);
@@ -30,6 +30,27 @@ function call(tool,flags=[]){
   // Do not echo raw authenticated stdout/stderr or tokens to CI/chat.
   return unwrapResponse(json(r.stdout));
 }
+const waitCell=new Int32Array(new SharedArrayBuffer(4));
+function responseValue(v){return v?.result??v?.data??v;}
+function waitForWxWasmReady(initial){
+  let x=responseValue(initial);
+  if(!wxWasmMode)return x;
+  for(let attempt=0;attempt<20;attempt++){
+    const decision=wxWasmReadDecision(x);
+    if(decision==='ready')return x;
+    if(decision==='stop')throw Error('WX WASM state is invalid; inspect simulator console');
+    Atomics.wait(waitCell,0,0,250);
+    const v=call('automation_evaluate',['--project',project,'--fn-source',fn]);
+    const gated=responseGate(v);
+    if(gated.pending){
+      state.pendingTask={tool:'automation_evaluate',taskId:gated.taskId,status:'pending'};save();
+      throw Error('USER_CONFIRMATION_REQUIRED: read-only runtime query is pending; confirm in IDE then --resume');
+    }
+    x=responseValue(v);
+  }
+  delete state.inflight;state.wxWasmReadTimeout=true;save();
+  throw Error('WX_WASM_READY_TIMEOUT: runtime stayed loading; safe to inspect and resume without replaying side effects');
+}
 function checkPng(name,bg){
   const p=PNG.sync.read(fs.readFileSync(path.join(out,name)));let backgroundPixels=0,markerPixels=0;
   for(let i=0;i<p.data.length;i+=4){
@@ -48,7 +69,7 @@ const steps=[
   {tool:'project_import',flags:()=>[]},
   {tool:'open_project_window',flags:()=>['--window-mode','fullMode']},
   {tool:'simulator_refresh',flags:()=>[]},
-  {tool:'automation_evaluate',flags:()=>['--fn-source',fn],verify:v=>{const x=v.result??v.data??v;gate(x);state.beforeTaps=x.taps;report.checks.nativeBefore=true;}},
+  {tool:'automation_evaluate',flags:()=>['--fn-source',fn],verify:v=>{const x=waitForWxWasmReady(v);gate(x);state.beforeTaps=x.taps;report.checks.nativeBefore=true;}},
   {tool:'simulator_screenshot',flags:()=>['--path',path.join(out,'before.png'),'--optimize','false','--wait','1'],verify:()=>{state.before=checkPng('before.png',beforeColor);}},
   {tool:'automation_game_action',flags:()=>imageTap(state.before.width,state.before.height)},
   {tool:'automation_evaluate',flags:()=>['--fn-source',fn],verify:v=>{gate(v.result??v.data??v,{after:true,previousTaps:state.beforeTaps});}},

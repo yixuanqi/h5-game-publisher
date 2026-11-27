@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {argsFor,statusGate,unwrapResponse,responseGate,fixtureGate,wxWasmFixtureGate,imageTap,pendingDecision} from '../platforms/wechat/skill-cli/contract.mjs';
+import {argsFor,statusGate,unwrapResponse,responseGate,fixtureGate,wxWasmReadDecision,wxWasmFixtureGate,imageTap,pendingDecision} from '../platforms/wechat/skill-cli/contract.mjs';
 test('CLI gate requires compatible version and login, distinguishes CLI token from MCP',()=>{
   const ready={versionRelation:'equal',loginExpired:false,mcpTokenRequired:true};
   assert.equal(statusGate(ready),null);
@@ -48,4 +48,12 @@ test('WX float-pigment fixture requires real WX runtime, exact Grid result and i
   assert.throws(()=>wxWasmFixtureGate({...v,releaseReady:true}),/ABI\/release/);
   assert.throws(()=>wxWasmFixtureGate(v,{after:true,previousTaps:0}),/touch/);
   assert.equal(wxWasmFixtureGate({...v,taps:1},{after:true,previousTaps:0}),true);
+});
+
+test('WX WASM readiness polling retries only missing/loading read state and fails closed otherwise',()=>{
+  assert.equal(wxWasmReadDecision(null),'retry');
+  assert.equal(wxWasmReadDecision({marker:'PUBLISHER_FLOAT_PIGMENT_WX_052D',phase:'loading'}),'retry');
+  assert.equal(wxWasmReadDecision({marker:'PUBLISHER_FLOAT_PIGMENT_WX_052D',phase:'pass'}),'ready');
+  assert.equal(wxWasmReadDecision({marker:'PUBLISHER_FLOAT_PIGMENT_WX_052D',phase:'error'}),'stop');
+  assert.equal(wxWasmReadDecision({marker:'OTHER',phase:'loading'}),'stop');
 });

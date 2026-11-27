@@ -43,6 +43,13 @@ export function fixtureGate(v,{after=false,previousTaps=0}={}){
   if(!Number.isInteger(v.taps)||v.taps<0||(after&&v.taps<=previousTaps))throw Error('Native touch not verified');
   return true;
 }
+export function wxWasmReadDecision(v){
+  if(v==null)return 'retry';
+  if(v?.marker!=='PUBLISHER_FLOAT_PIGMENT_WX_052D')return 'stop';
+  if(v.phase==='loading')return 'retry';
+  if(v.phase==='pass')return 'ready';
+  return 'stop';
+}
 export function wxWasmFixtureGate(v,{after=false,previousTaps=0}={}){
   if(v?.marker!=='PUBLISHER_FLOAT_PIGMENT_WX_052D')throw Error('WX WASM fixture marker not observed');
   if(v.phase!=='pass'||v.runtime!=='wx')throw Error('WXWebAssembly float-pigment probe not ready');

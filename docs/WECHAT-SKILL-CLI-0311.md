@@ -26,3 +26,7 @@ Before invoking wechatide the harness validates the fixture kind, pinned float-p
 The Mini Game path deliberately does **not** call `automation_runtime_info`: the reviewed 0.3.11 automator Skill explicitly says that Mini Games must not use page-stack/runtime-info tooling. Optional `--phone-preview` is an explicit preview request and may return pending for user confirmation; it never authorizes upload and never substitutes for simulator/runtime evidence.
 
 This remains a fixture-only gate. Passing it authorizes the next integration experiment; it does not prove the frozen V46.1 game, audio, save flow, gameplay parity, phone execution, or release readiness.
+
+
+## 0.5.2d async WXWebAssembly readiness
+The WX fixture initializes WASM asynchronously. The first read after `simulator_refresh` may legitimately see no global yet or `phase: loading`. The local harness therefore performs a bounded read-only retry (20 × 250 ms) of the same `automation_evaluate` state query. It retries **only** missing state or the exact pinned marker in `loading`; marker mismatch, `error`, unknown state, CLI failure or pending fail closed. A pending read task is journaled by taskId and never resent. A deterministic loading timeout clears only the read-step inflight marker so the operator can inspect the simulator and resume without replaying import/touch side effects.
