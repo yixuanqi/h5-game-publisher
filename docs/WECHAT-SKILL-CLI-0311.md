@@ -11,3 +11,18 @@ User archive wechatide-skill.rar SHA256 a75896794f5def9d37169413ade1b985be3b7b77
 
 ## CI and current blockers
 New CI runs only contract tests on Linux/Windows; these do not invoke wechatide. Official interactive host is not available in this conversation's sandbox, no real Skill calls made, no hosted account authorization. A future explicitly authorized persistent desktop host may run this local harness; do not attach production secrets or untrusted workflow jobs to it. No automatic publication. Latest independent layout run 45925133994 (c46308a) topbars and mobile footer passed, desktop footer max delta 6.50px vs 4px gate. Continue compatibility renderer separately.
+
+
+## 0.5.2d float-pigment WXWebAssembly official gate
+
+Host evidence is green, but it is not official Mini Game evidence. Commit `4da4ae66c5bd977c51fbaf3c096cadf70b6d7fd5` generated a touch-enabled non-release `touristappid` fixture in workflow run `45930788084`, artifact `15168123664` (`wechat-upstream-renderer-evaluation-NOT-RELEASE`).
+
+On the authorized interactive Windows/macOS test host, extract that artifact and point the existing harness at the absolute `wx-wasm-fixture` directory:
+
+`node platforms/wechat/skill-cli/probe.mjs --interactive-host --installation-report "<absolute installation-report.json>" --wx-wasm-fixture "<absolute wx-wasm-fixture directory>"`
+
+Before invoking wechatide the harness validates the fixture kind, pinned float-pigment commit/version/ABI and the packaged WASM byte count/SHA-256. It then imports/opens/refreshes the Mini Game, reads the runtime marker, captures before/after screenshots, performs an image-space touch, re-reads state and checks console markers. Pass requires real `WXWebAssembly` (`runtime: "wx"`), `phase: "pass"`, ABI v1, `releaseReady: false`, second-column x=103 within 0.05 px, and a real touch increment.
+
+The Mini Game path deliberately does **not** call `automation_runtime_info`: the reviewed 0.3.11 automator Skill explicitly says that Mini Games must not use page-stack/runtime-info tooling. Optional `--phone-preview` is an explicit preview request and may return pending for user confirmation; it never authorizes upload and never substitutes for simulator/runtime evidence.
+
+This remains a fixture-only gate. Passing it authorizes the next integration experiment; it does not prove the frozen V46.1 game, audio, save flow, gameplay parity, phone execution, or release readiness.

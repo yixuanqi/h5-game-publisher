@@ -3,8 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {skillVersion,argsFor,statusGate,unwrapResponse,responseGate,fixtureGate,wxWasmFixtureGate,imageTap,pendingDecision} from './contract.mjs';
+import {FLOAT_PIGMENT} from '../runtime/float-pigment-pin.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url)),root=path.resolve(here,'../../..');
 const opt=process.argv.slice(2);
 function option(k){const i=opt.indexOf(k);return i<0?null:opt[i+1];}
@@ -39,14 +41,13 @@ function checkPng(name,bg){
   if(backgroundPixels<1000||markerPixels<1000)throw Error('Screenshot lacks real fixture colors');
   return {width:p.width,height:p.height,backgroundPixels,markerPixels};
 }
-const fn=wxWasmMode?'function(){ return GameGlobal.__H5PUBLISHER_FLOAT_PIGMENT_WX__ }':'function(){ return GameGlobal.__publisherOfficial051c }';
+const fn=wxWasmMode?'function(){ var a=(typeof GameGlobal!==\"undefined\"&&GameGlobal.__H5PUBLISHER_FLOAT_PIGMENT_WX__)||null; var b=(typeof globalThis!==\"undefined\"&&globalThis.__H5PUBLISHER_FLOAT_PIGMENT_WX__)||null; return a||b; }':'function(){ return GameGlobal.__publisherOfficial051c }';
 const gate=wxWasmMode?wxWasmFixtureGate:fixtureGate;
 const beforeColor=wxWasmMode?[29,95,70]:[22,50,79],afterColor=wxWasmMode?[95,63,29]:[40,107,71];
 const steps=[
   {tool:'project_import',flags:()=>[]},
   {tool:'open_project_window',flags:()=>['--window-mode','fullMode']},
   {tool:'simulator_refresh',flags:()=>[]},
-  {tool:'automation_runtime_info',flags:()=>['--action','systemInfo'],verify:v=>{report.checks.runtimeInfo=Boolean(v);}},
   {tool:'automation_evaluate',flags:()=>['--fn-source',fn],verify:v=>{const x=v.result??v.data??v;gate(x);state.beforeTaps=x.taps;report.checks.nativeBefore=true;}},
   {tool:'simulator_screenshot',flags:()=>['--path',path.join(out,'before.png'),'--optimize','false','--wait','1'],verify:()=>{state.before=checkPng('before.png',beforeColor);}},
   {tool:'automation_game_action',flags:()=>imageTap(state.before.width,state.before.height)},
@@ -72,13 +73,26 @@ try{
     // Reuse existing pinned pngjs dependency, not a new third-party runtime.
     const require=createRequire(path.join(here,'../devtools/package.json'));({PNG}=require('pngjs'));
     fs.mkdirSync(out,{recursive:true});
+    let expectedFixtureIdentity=null;
+    if(wxWasmMode){
+      if(!path.isAbsolute(wxWasmInput)||!fs.existsSync(project))throw Error('WX WASM fixture must be an existing absolute directory');
+      for(const name of ['game.js','game.json','project.config.json','layout-runtime.js','float-pigment-layout.wasm','fixture-manifest.json'])if(!fs.existsSync(path.join(project,name)))throw Error('WX WASM fixture missing '+name);
+      const manifest=json(fs.readFileSync(path.join(project,'fixture-manifest.json'),'utf8'));
+      const wasm=fs.readFileSync(path.join(project,'float-pigment-layout.wasm'));
+      const wasmSha=createHash('sha256').update(wasm).digest('hex');
+      if(manifest.kind!=='wechat-wxwebassembly-layout-fixture-not-release'||manifest.releaseReady!==false||manifest.expectedGlobal!=='__H5PUBLISHER_FLOAT_PIGMENT_WX__'||manifest.expectedPhase!=='pass')throw Error('WX WASM fixture manifest contract mismatch');
+      if(manifest.candidate?.sha!==FLOAT_PIGMENT.sha||manifest.candidate?.version!==FLOAT_PIGMENT.version||manifest.candidate?.abiVersion!==FLOAT_PIGMENT.abiVersion)throw Error('WX WASM fixture candidate pin mismatch');
+      if(manifest.wasm?.sha256!==wasmSha||manifest.wasm?.bytes!==wasm.length)throw Error('WX WASM fixture digest mismatch');
+      expectedFixtureIdentity=manifest.candidate.sha+':'+wasmSha;
+      report.checks.wxWasmFixture={candidateSha:manifest.candidate.sha,abiVersion:manifest.candidate.abiVersion,wasmSha256:wasmSha,wasmBytes:wasm.length};
+    }
     if(fs.existsSync(journal)){
       state=json(fs.readFileSync(journal,'utf8'));
       if(!opt.includes('--resume'))throw Error('Existing local journal; use --resume after reviewing pending/failed state');
+      if(wxWasmMode&&state.fixtureIdentity!==expectedFixtureIdentity)throw Error('WX WASM fixture changed since journal was created; inspect and restart explicitly');
     }else{
       if(wxWasmMode){
-        if(!path.isAbsolute(wxWasmInput)||!fs.existsSync(project))throw Error('WX WASM fixture must be an existing absolute directory');
-        for(const name of ['game.js','game.json','project.config.json','layout-runtime.js','float-pigment-layout.wasm','fixture-manifest.json'])if(!fs.existsSync(path.join(project,name)))throw Error('WX WASM fixture missing '+name);
+        state.fixtureIdentity=expectedFixtureIdentity;
       }else{
         if(fs.existsSync(project))throw Error('Unexpected existing fixture directory');
         fs.cpSync(path.join(here,'../devtools/fixture'),project,{recursive:true,errorOnExist:true,force:false});

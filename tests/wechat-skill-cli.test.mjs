@@ -34,16 +34,18 @@ test('refresh or login is not runtime proof: original marker storage bin and inc
   assert.equal(fixtureGate({...v,taps:1},{after:true,previousTaps:0}),true);
 });
 
-test('reviewed 0.3.11 runtime-info and phone-preview tools are diagnostic-only allowlisted',()=>{
-  assert.doesNotThrow(()=>argsFor('automation_runtime_info',['--action','systemInfo']));
+test('reviewed 0.3.11 Mini Game gate rejects runtime-info; phone-preview remains explicit opt-in',()=>{
+  assert.throws(()=>argsFor('automation_runtime_info',['--action','systemInfo']),/Unapproved/);
   assert.doesNotThrow(()=>argsFor('auto_preview',[]));
   assert.throws(()=>argsFor('upload'),/Unapproved/);
 });
 test('WX float-pigment fixture requires real WX runtime, exact Grid result and increasing touch',()=>{
-  const v={marker:'PUBLISHER_FLOAT_PIGMENT_WX_052D',phase:'pass',runtime:'wx',taps:0,actualX:103,delta:0};
+  const v={marker:'PUBLISHER_FLOAT_PIGMENT_WX_052D',phase:'pass',runtime:'wx',taps:0,expectedX:103,actualX:103,delta:0,abiVersion:1,releaseReady:false};
   assert.equal(wxWasmFixtureGate(v),true);
   assert.throws(()=>wxWasmFixtureGate({...v,runtime:'standard'}),/not ready/);
   assert.throws(()=>wxWasmFixtureGate({...v,actualX:104,delta:1}),/Grid/);
+  assert.throws(()=>wxWasmFixtureGate({...v,abiVersion:2}),/ABI\/release/);
+  assert.throws(()=>wxWasmFixtureGate({...v,releaseReady:true}),/ABI\/release/);
   assert.throws(()=>wxWasmFixtureGate(v,{after:true,previousTaps:0}),/touch/);
   assert.equal(wxWasmFixtureGate({...v,taps:1},{after:true,previousTaps:0}),true);
 });
