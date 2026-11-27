@@ -5,6 +5,7 @@ import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {build as bundle} from 'esbuild';
+import {writeJsonModule,assertWechatEntryRequires} from '../runtime/json-module-build.mjs';
 import {exportGame} from '../../../scripts/import-blog.mjs';
 import {buildFloatPigmentWasm} from '../runtime/float-pigment-build.mjs';
 import {compileRuntimeCssPlan} from './css-plan-build.mjs';
@@ -61,8 +62,8 @@ try{
   fs.cpSync(path.join(raw,'data'),path.join(project,'data'),{recursive:true,errorOnExist:true,force:false});
   const floatPigment=buildFloatPigmentWasm({vendor,workDir:path.join(work,'float-pigment-build'),outFile:path.join(project,'float-pigment-layout.wasm')});
   fs.writeFileSync(path.join(project,'source-styles.css'),css);
-  writeJson(path.join(project,'layout-plan.json'),layoutPlan);
-  writeJson(path.join(project,'layout-requirements.json'),layoutContract);
+  writeJsonModule(project,'layout-plan.js',layoutPlan);
+  writeJsonModule(project,'layout-requirements.js',layoutContract);
   fs.writeFileSync(path.join(project,'html.js'),"'use strict';\nmodule.exports="+JSON.stringify(html)+";\n");
 
   const require=createRequire(import.meta.url),linkedomPkg=require('linkedom/package.json');
@@ -123,12 +124,13 @@ try{
   fs.writeFileSync(path.join(project,'game.js'),[
     "'use strict';",
     "const html=require('./html.js');",
-    "const layoutPlan=require('./layout-plan.json');",
-    "const layoutRequirements=require('./layout-requirements.json');",
+    "const layoutPlan=require('./layout-plan.js');",
+    "const layoutRequirements=require('./layout-requirements.js');",
     "module.exports=require('./host.js').startOriginalEntry(wx,()=>require('./engine.js'),html,layoutPlan,layoutRequirements,globalThis);",
     ''
   ].join('\n'));
 
+  const entryRequires=assertWechatEntryRequires(project);
   const browserRefs={};
   for(const item of rawBefore.filter(x=>x.path.startsWith('src/')&&x.path.endsWith('.js'))){
     const text=fs.readFileSync(path.join(raw,item.path),'utf8');
@@ -172,6 +174,7 @@ try{
     moduleEntry:'./src/main.js?v=46.1.0',
     linkedom:{version:linkedomPkg.version,license:linkedomPkg.license,entry:'linkedom/worker'},
     floatPigment:{...floatPigment.vendor,wasm:{bytes:floatPigment.bytes,sha256:floatPigment.sha256},toolchain:floatPigment.toolchain},
+    entryRequires,
     privateAliases:Object.keys(define),
     engineInputs:Object.keys(engineResult.metafile.inputs).length,
     hostInputs:Object.keys(hostResult.metafile.inputs).length,

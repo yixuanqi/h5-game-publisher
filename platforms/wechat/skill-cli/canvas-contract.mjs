@@ -5,7 +5,7 @@ export function checkCanvasProject(project,info){
   if(info?.kind!=='wechat-canvas-diagnostic-052g-not-release'||info.sourceSha!=='cdb508594cc610733f248ec5d4123a3b9d954981'||info.mainBlob!=='b7ec66093bb03ccd498b75b500f968b3af7c04ed'||info.sourceIntegrity!=='pass'||info.frameworkDirty!==false||info.releaseReady!==false||info.engineInputs!==67||info.floatPigment!=='intentionally-isolated'||!/^[a-f0-9]{40}$/.test(info.framework))throw Error('Canvas build-info mismatch');
   const actual=snapshot(project);
   if(JSON.stringify(actual)!==JSON.stringify(info.projectFiles)||digestManifest(actual)!==info.projectFilesSha256)throw Error('Canvas project digest mismatch');
-  for(const f of ['game.js','host.js','engine.js','html.js','layout-plan.json','game.json','project.config.json','diagnostic-contract.json'])if(!actual.some(x=>x.path===f))throw Error('Missing '+f);
+  for(const f of ['game.js','host.js','engine.js','html.js','layout-plan.js','game.json','project.config.json','diagnostic-contract.json'])if(!actual.some(x=>x.path===f))throw Error('Missing '+f);
   const c=JSON.parse(fs.readFileSync(path.join(project,'project.config.json'),'utf8')),d=JSON.parse(fs.readFileSync(path.join(project,'diagnostic-contract.json'),'utf8'));
   if(c.appid!=='touristappid'||c.compileType!=='game'||c.miniprogramRoot!=='./'||d.kind!==info.kind||d.sourceSha!==info.sourceSha||d.releaseReady!==false||d.expectedStateGlobal!=='__H5PUBLISHER_CANVAS_PROBE__'||d.successPhase!=='CANVAS_PLAYING_OBSERVED')throw Error('Canvas diagnostic identity mismatch');
   return {sourceSha:info.sourceSha,framework:info.framework,projectFilesSha256:info.projectFilesSha256};

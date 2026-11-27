@@ -4,6 +4,8 @@ on:
     branches: ['experiment/v052g-canvas']
     paths:
       - 'platforms/wechat/canvas-diagnostic/**'
+      - 'platforms/wechat/runtime/json-module-build.mjs'
+      - 'tests/wechat-json-module-build.test.mjs'
       - 'tests/wechat-canvas-diagnostic.test.mjs'
       - 'tests/wechat-canvas-diagnostic-loader.test.mjs'
       - '.github/workflows/wechat-canvas-diagnostic.yml'
@@ -21,7 +23,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test tests/wechat-canvas-diagnostic.test.mjs tests/wechat-canvas-diagnostic-loader.test.mjs
+      - run: node --test tests/wechat-canvas-diagnostic.test.mjs tests/wechat-canvas-diagnostic-loader.test.mjs tests/wechat-json-module-build.test.mjs
       - uses: actions/checkout@v4
         with:
           repository: yixuanqi/PhotoGallery
@@ -32,7 +34,7 @@ jobs:
       - run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund esbuild@0.25.12 linkedom@0.18.15 postcss@8.5.6 specificity@1.0.0 @napi-rs/canvas@0.1.80
       - run: node --test platforms/wechat/original-entry/css-plan-build.test.mjs
       - run: node platforms/wechat/canvas-diagnostic/build.mjs upstream
-      - run: node --check .work/wechat-canvas-diagnostic-052g/project/game.js && node platforms/wechat/canvas-diagnostic/host-probe.cjs
+      - run: node --check .work/wechat-canvas-diagnostic-052g/project/game.js && node --check .work/wechat-canvas-diagnostic-052g/project/layout-plan.js && node platforms/wechat/canvas-diagnostic/host-probe.cjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

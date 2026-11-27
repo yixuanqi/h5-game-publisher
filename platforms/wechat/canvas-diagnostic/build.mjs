@@ -5,6 +5,7 @@ import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {build as bundle} from 'esbuild';
+import {writeJsonModule,assertWechatEntryRequires} from '../runtime/json-module-build.mjs';
 import {exportGame} from '../../../scripts/import-blog.mjs';
 import {compileRuntimeCssPlan} from '../original-entry/css-plan-build.mjs';
 import {snapshot,assertSnapshot,assertDisjoint,digestManifest,gitBlob} from '../../../scripts/source-integrity.mjs';
@@ -50,7 +51,7 @@ try{
 
   fs.cpSync(path.join(raw,'data'),path.join(project,'data'),{recursive:true,errorOnExist:true,force:false});
   fs.writeFileSync(path.join(project,'source-styles.css'),css);
-  writeJson(path.join(project,'layout-plan.json'),layoutPlan);
+  writeJsonModule(project,'layout-plan.js',layoutPlan);
   fs.writeFileSync(path.join(project,'html.js'),"'use strict';\nmodule.exports="+JSON.stringify(html)+";\n");
 
   const require=createRequire(import.meta.url),linkedomPkg=require('linkedom/package.json');
@@ -110,11 +111,12 @@ try{
   fs.writeFileSync(path.join(project,'game.js'),[
     "'use strict';",
     "const html=require('./html.js');",
-    "const layoutPlan=require('./layout-plan.json');",
+    "const layoutPlan=require('./layout-plan.js');",
     "module.exports=require('./host.js').startCanvasDiagnostic(wx,()=>require('./engine.js'),html,layoutPlan,globalThis);",
     ''
   ].join('\n'));
 
+  const entryRequires=assertWechatEntryRequires(project);
   const browserRefs={};
   for(const item of rawBefore.filter(x=>x.path.startsWith('src/')&&x.path.endsWith('.js'))){
     const text=fs.readFileSync(path.join(raw,item.path),'utf8');
@@ -158,6 +160,7 @@ try{
     moduleEntry:'./src/main.js?v=46.1.0',
     linkedom:{version:linkedomPkg.version,license:linkedomPkg.license,entry:'linkedom/worker'},
     floatPigment:'intentionally-isolated',
+    entryRequires,
     privateAliases:Object.keys(define),
     engineInputs:Object.keys(engineResult.metafile.inputs).length,
     hostInputs:Object.keys(hostResult.metafile.inputs).length,
