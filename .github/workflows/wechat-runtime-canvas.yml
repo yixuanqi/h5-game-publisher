@@ -4,6 +4,7 @@ on:
     paths:
       - 'platforms/wechat/runtime/**'
       - 'tests/wechat-runtime-canvas.test.mjs'
+      - 'tests/wechat-performance-bridge.test.mjs'
       - '.github/workflows/wechat-runtime-canvas.yml'
   workflow_dispatch:
 permissions:
@@ -19,7 +20,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test tests/wechat-runtime-canvas.test.mjs
+      - run: node --test tests/wechat-runtime-canvas.test.mjs tests/wechat-performance-bridge.test.mjs
       - uses: actions/checkout@v4
         with:
           repository: yixuanqi/PhotoGallery

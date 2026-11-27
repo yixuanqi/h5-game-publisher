@@ -12,6 +12,8 @@ import {exportGame} from '../../../scripts/import-blog.mjs';
 import {snapshot,assertSnapshot,assertDisjoint,gitBlob,sha256} from '../../../scripts/source-integrity.mjs';
 import {installCanvasBridge} from './canvas-bridge.mjs';
 import {createNavigatorBridge} from './navigator-bridge.mjs';
+import {createPerformanceBridge} from './performance-bridge.mjs';
+import {performance as nodePerformance} from 'node:perf_hooks';
 const {createLocalFetch}=createRequire(import.meta.url)('../bootstrap/runtime.cjs');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..');
 const spec=JSON.parse(fs.readFileSync(path.join(root,'platforms/wechat/bootstrap/compatibility.json'),'utf8'));
@@ -26,7 +28,7 @@ const before=snapshot(source);
 fs.mkdirSync(out,{recursive:true});
 const report={stage:'0.5.2b-canvas-spike',sourceSha:spec.sourceSha,framework:git(root,'rev-parse','HEAD'),result:'fail',backend:'Skia / Node diagnostic',officialDevTools:'not-run',gameplayParity:'not-run',releaseReady:false};
 let rawBefore;
-async function attempt(code,html,{canvas=false,navigator=false,timers=false,packagedFetch=false}={}){
+async function attempt(code,html,{canvas=false,navigator=false,timers=false,packagedFetch=false,performanceBridge=false}={}){
   const {window,document}=parseHTML(html);
   const bridge=canvas?installCanvasBridge(document,(w,h)=>createCanvas(w,h)):null;
   const nav=navigator?createNavigatorBridge({platform:'android',system:'Android 14',language:'zh_CN',wechatVersion:'8.0'}):undefined;
@@ -35,13 +37,18 @@ async function attempt(code,html,{canvas=false,navigator=false,timers=false,pack
     catch{try{window.navigator=nav;}catch{}}
   }
   const fetchLocal=packagedFetch?createLocalFetch({getFileSystemManager:()=>({readFileSync(name,enc){return fs.readFileSync(path.join(raw,name),enc);}})}):undefined;
+  const webPerformance=performanceBridge?createPerformanceBridge({getPerformance:()=>({now:()=>nodePerformance.now()*1000})}):undefined;
+  if(webPerformance){
+    try{Object.defineProperty(window,'performance',{configurable:true,value:webPerformance});}
+    catch{try{window.performance=webPerformance;}catch{}}
+  }
   const observed=[];
   const observedConsole={
     log:(...args)=>observed.push({level:'log',text:args.map(String).join(' ')}),
     warn:(...args)=>observed.push({level:'warn',text:args.map(String).join(' ')}),
     error:(...args)=>observed.push({level:'error',text:args.map(String).join(' ')})
   };
-  const context=vm.createContext({window,document,console:observedConsole,...(nav?{navigator:nav}:{}),...(timers?{setTimeout,clearTimeout}:{}),...(fetchLocal?{fetch:fetchLocal}:{})});
+  const context=vm.createContext({window,document,console:observedConsole,...(nav?{navigator:nav}:{}),...(timers?{setTimeout,clearTimeout}:{}),...(fetchLocal?{fetch:fetchLocal}:{}),...(webPerformance?{performance:webPerformance}:{})});
   let outcome;
   try{vm.runInContext(code,context,{timeout:5000,filename:'original-main.bundle.js'});outcome={status:'returned-sync'};}
   catch(e){outcome={status:'blocked',error:String(e),stack:String(e.stack).split('\n').slice(0,14)};}
@@ -74,9 +81,12 @@ try{
   report.timerOnly=await attempt(code,html,{canvas:true,navigator:true,timers:true});
   assert.ok(report.timerOnly.stats.contexts>0&&report.timerOnly.stats.radialGradients>0,'Timer slice lost native Canvas progress');
   assert.match(JSON.stringify(report.timerOnly.asyncErrors),/fetch is not defined/,'Expected packaged fetch Red blocker changed; inspect before adapting');
-  report.green=await attempt(code,html,{canvas:true,navigator:true,timers:true,packagedFetch:true});
-  assert.ok(report.green.stats.contexts>0&&report.green.stats.radialGradients>0,'Packaged fetch slice lost native Canvas progress');
-  assert.doesNotMatch(JSON.stringify(report.green.asyncErrors),/fetch is not defined/,'Packaged fetch blocker persists');
+  report.fetchOnly=await attempt(code,html,{canvas:true,navigator:true,timers:true,packagedFetch:true});
+  assert.ok(report.fetchOnly.stats.contexts>0&&report.fetchOnly.stats.radialGradients>0,'Packaged fetch slice lost native Canvas progress');
+  assert.match(JSON.stringify(report.fetchOnly.asyncErrors),/performance is not defined/,'Expected performance Red blocker changed; inspect before adapting');
+  report.green=await attempt(code,html,{canvas:true,navigator:true,timers:true,packagedFetch:true,performanceBridge:true});
+  assert.ok(report.green.stats.contexts>0&&report.green.stats.radialGradients>0,'Performance slice lost native Canvas progress');
+  assert.doesNotMatch(JSON.stringify(report.green.asyncErrors),/performance is not defined/,'Performance blocker persists');
   assert.ok(report.green.bootVerified||report.green.asyncErrors.length>0,'Async bootstrap produced neither boot evidence nor an observable blocker');
   // Independent native raster evidence, not a screenshot of the game or a visual parity result.
   const {document}=parseHTML('<html><body><canvas id="screen" width="32" height="32"></canvas></body></html>');

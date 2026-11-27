@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {installCanvasBridge} from '../platforms/wechat/runtime/canvas-bridge.mjs';
 import {createNavigatorBridge} from '../platforms/wechat/runtime/navigator-bridge.mjs';
+import {createPerformanceBridge} from '../platforms/wechat/runtime/performance-bridge.mjs';
 function dom(){
   function element(localName){
     const attrs=new Map();return {localName,getAttribute:k=>attrs.get(k)??null,setAttribute:(k,v)=>attrs.set(k,String(v)),removeAttribute:k=>attrs.delete(k)};
@@ -42,4 +43,9 @@ test('Mini Game navigator exposes only truthful passive environment fields',()=>
   for(const key of ['serviceWorker','clipboard','getGamepads','vibrate'])assert.equal(key in ios,false,key+' must stay absent until mapped');
   const android=createNavigatorBridge({platform:'android',system:'Android 15'});
   assert.match(android.userAgent,/Android Mobile/);assert.equal(android.maxTouchPoints,1);
+});
+
+test('performance bridge keeps browser millisecond units and omits Chromium memory',()=>{
+  const values=[2_000_000,2_004_250],p=createPerformanceBridge({getPerformance:()=>({now:()=>values.shift()})});
+  assert.equal(p.now(),2000);assert.equal(p.now(),2004.25);assert.equal('memory' in p,false);
 });
