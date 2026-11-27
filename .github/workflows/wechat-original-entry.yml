@@ -34,8 +34,18 @@ jobs:
           path: upstream
           sparse-checkout: docs/ashen-bell-vow
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: wechat-miniprogram/float-pigment
+          ref: 830c70afdc0ee092e74ad928dc9c6e05844ef62a
+          path: vendor-float-pigment
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.92.0
+          targets: wasm32-unknown-unknown
       - run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund esbuild@0.25.12 linkedom@0.18.15
-      - run: node platforms/wechat/original-entry/build.mjs upstream touristappid
+      - run: node platforms/wechat/original-entry/build.mjs upstream vendor-float-pigment touristappid
       - run: node --check .work/wechat-original-entry-052f/project/game.js && node --check .work/wechat-original-entry-052f/project/host.js && node --check .work/wechat-original-entry-052f/project/engine.js
       - uses: actions/upload-artifact@v4
         if: always()
