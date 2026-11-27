@@ -39,3 +39,28 @@ Use layers instead of pretending one adapter is a browser:
 4. Keep official WeChat DevTools / wechatide evidence as the release gate. Host Chromium, Node WebAssembly, mocks or CLI handshakes never count as final Mini Game evidence.
 
 The original game repository remains read-only throughout all experiments.
+
+
+## Evidence-backed route decision — V0.5.2d
+
+The open-source geometry evaluation is now strong enough to stop treating float-pigment as a speculative candidate. It is approved for **runtime geometry integration behind explicit capability gates**, not for release readiness.
+
+Verified against the frozen Ashen Bell Vow V46.1 source without modifying it:
+
+- Host WASM/runtime backend: run 45930652844, commit `9a533150268936439855bcf1f83fd67917ed57f9`, success. The pinned float-pigment 0.10.5 / `830c70afdc0ee092e74ad928dc9c6e05844ef62a` source builds to a 248,936-byte import-free WASM. Synthetic three-column Grid returns x=103 exactly. Source integrity passed; official DevTools remained not-run.
+- Real dynamic save-slot Grid: run 45931056094, commit `27dd7e7af5f051fcc7f8594598202f3aa8551fd1`, success, artifact 15168587753. Desktop and mobile-landscape both compare the original runtime-generated `#save-slots-grid` against float-pigment. Maximum geometry delta is **0.009765625 px** under a 1 px gate.
+- Real settings Flex row: run 45931493280, commit `b9eb94474feb1f0d22a5f7bc1e50402a78c81a55`, success, artifact 15168868434, artifact SHA-256 `65f5284d3f046d63ddbcd4fd5ea215e05de02358c6e40b941c23aae90e1f04f4`. The first live `.settings-row` uses authored `space-between + center + gap`; desktop and mobile-landscape both have **0 px** position delta when browser-measured child intrinsic sizes are supplied to the upstream layout engine.
+- Real title Flex parents: run 45931583520, commit `397f5d1c3c57a08c31789ff495e820c9b4cc909c`, success, artifact 15168588841, artifact SHA-256 `2a59c0ffff0fd2ff060a5d2332a33dddf19fc02df1efb6e2eebaa87548e62915`. `.title-topbar` and `.title-slots-head` are **0 px** delta on desktop and mobile-landscape.
+
+The old self-written title-row raster diagnostic still has its pre-existing desktop footer failure (6.5006 px versus a 4 px gate). Its gate is not weakened. The successful upstream Flex comparisons instead provide a migration path away from maintaining that geometry logic ourselves.
+
+### Explicit upstream boundary
+The pinned float-pigment type system exposes Grid tracks as MinContent / MaxContent / Fr / Length. Its own test roadmap still marks `repeat()` and `minmax()` incomplete. The framework therefore accepts only a proven semantics-preserving normalization such as the tested `repeat(3, minmax(0, 1fr))` -> three `1fr` tracks. A non-zero constraint such as `minmax(220px, 1fr)` is rejected; it must not be silently approximated.
+
+### Architecture decision
+1. Keep the framework's bounded DOM/BOM/event/storage/media compatibility layer as browser-semantics glue.
+2. Replace self-developed Flex/Grid geometry with the pinned float-pigment WASM backend wherever the source style is inside the verified capability subset.
+3. Treat text shaping/intrinsic measurement as a separate subsystem, matching float-pigment's own external-text-layout model. Diagnostic Chromium measurements are reference evidence only, not the shipping implementation.
+4. Treat painting (gradients, pseudo-elements, SVG/images, borders, text raster) and event hit testing as a separate candidate layer. minigame-canvas-engine may remain useful there, but it is not the browser/runtime.
+5. Fail closed on unsupported layout features instead of falling back to invented coordinates or semantic approximations.
+6. Promotion beyond host geometry still requires the standalone WXWebAssembly fixture to pass through official WeChat DevTools/wechatide on an authorized interactive Windows/macOS host. No host test substitutes for that gate.
