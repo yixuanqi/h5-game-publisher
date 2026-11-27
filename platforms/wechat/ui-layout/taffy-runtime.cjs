@@ -24,6 +24,14 @@ function createTaffyBackend(instance){
       // No fixed/sticky or inline formatting emulation in V1.
       if(prop==='position'&&!['relative','absolute','static'].includes(value))throw Error('Unsupported positioning: '+value);
       if(prop==='display'&&!['block','flex','grid','none'].includes(value))throw Error('Unsupported display: '+value);
+      // CSS accepts a unitless zero length, but Taffy 0.16.0's minimum
+      // track parser accepts only px, percentages or size keywords.
+      // Normalize only the first argument of minmax on grid track longhands;
+      // do not touch fractional tracks, nonzero lengths, or other properties.
+      if(prop==='grid-template-columns'||prop==='grid-template-rows'){
+        value=value.replace(/(\bminmax\(\s*)([+-]?(?:0+(?:\.0*)?|\.0+))(?=\s*,)/gi,(_,prefix)=>prefix+'0px');
+        if(value.length>4096)throw Error('Unsupported layout value: '+prop);
+      }
       check(e.TlInputBegin(value.length),'input begin');for(let i=0;i<value.length;i++)check(e.TlInputByte(i,value.charCodeAt(i)),'input byte');
       mutation(prop,()=>e.TlSetStyle(h,PROPS[prop]));
     },

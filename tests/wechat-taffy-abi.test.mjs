@@ -13,3 +13,15 @@ test('failed mutation and compute invalidate previous geometry',()=>{const m=moc
 test('nonfinite geometry and invalid viewports rejected',()=>{const m=mock(),b=createTaffyBackend(m),h=b.createNode();for(const width of [NaN,Infinity,-1,1e7])assert.throws(()=>b.calculate(h,{width,height:100}),/viewport/);b.calculate(h,{width:100,height:100});m.exports.TlRect=()=>NaN;assert.throws(()=>b.rect(h),/Unavailable/);});
 test('WX path and no native fallback',async()=>{let standard=0;const host={WXWebAssembly:{instantiate:async()=>{throw Error('native error')}},WebAssembly:{instantiate:async()=>{standard++;return mock();}}};await assert.rejects(loadTaffy({host,mode:'wx'}),/native error/);await assert.rejects(loadTaffy({host,mode:'wx',path:'../a.wasm'}),/Invalid/);assert.equal(standard,0);});
 test('explicit host and native mode select correct loader',async()=>{let called;const host={WXWebAssembly:{instantiate:async(p)=>{called=p;return {instance:mock()}}},WebAssembly:{instantiate:async(b)=>{called=b;return {instance:mock()}}}};assert.equal((await loadTaffy({host,mode:'wx'})).abiVersion,1);assert.equal(called,'taffy-layout.wasm');const bytes=new Uint8Array(8);assert.equal((await loadTaffy({host,mode:'host',bytes})).abiVersion,1);assert.equal(called,bytes);await assert.rejects(loadTaffy({host}),/Explicit/);});
+
+test('normalize unitless minmax zero for the pinned Taffy grid parser only',()=>{
+  const m=mock(),b=createTaffyBackend(m),h=b.createNode();
+  for(const prop of ['grid-template-columns','grid-template-rows']){
+    const source='minmax(0, 1.04fr) minmax(248px, 0.96fr) repeat(2, minmax(0.0, 1fr))';
+    b.setStyle(h,prop,source);
+    assert.deepEqual(m.calls.at(-1),[h,PROPS[prop],'minmax(0px, 1.04fr) minmax(248px, 0.96fr) repeat(2, minmax(0px, 1fr))']);
+    b.setStyle(h,prop,'minmax(0px, 1fr) minmax(10%, 2fr) minmax(2, 3fr)');
+    assert.equal(m.calls.at(-1)[2],'minmax(0px, 1fr) minmax(10%, 2fr) minmax(2, 3fr)');
+  }
+  b.setStyle(h,'flex-grow','0');assert.equal(m.calls.at(-1)[2],'0');
+});
