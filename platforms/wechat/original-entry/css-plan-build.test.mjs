@@ -18,3 +18,13 @@ test('CSS compiler precomputes cascade metadata and expands authored shorthands'
 test('unsupported runtime-relevant flex shorthand fails at build time',()=>{
   assert.throws(()=>compileRuntimeCssPlan('.x{flex: grow potato;}'),/Unsupported flex/);
 });
+
+
+test('each expanded declaration has a strictly increasing source order across media rules',()=>{
+  const plan=compileRuntimeCssPlan('.a{gap:4px;color:red!important}@media(max-width:500px){.a{color:blue}}');
+  const all=plan.rules.flatMap(r=>r.declarations);
+  assert.deepEqual(all.map(d=>d.order),[1,2,3,4]);
+  assert.equal(plan.maxOrder,4);
+  assert.equal(all[2].important,true);
+  assert.equal(all[3].value,'blue');
+});

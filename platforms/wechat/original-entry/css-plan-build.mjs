@@ -18,7 +18,7 @@ export function compileRuntimeCssPlan(css){
           for(const decl of node.nodes||[]){
             if(decl.type!=='decl')continue;
             const expanded=expandRuntimeDeclaration(decl.prop,decl.value);
-            for(const [prop,value] of expanded)declarations.push({prop,value,important:!!decl.important,order:++});
+            for(const [prop,value] of expanded)declarations.push({prop,value,important:!!decl.important,order:++order});
           }
           if(!declarations.length)continue;
           const {A,B,C}=calculate(selector);
