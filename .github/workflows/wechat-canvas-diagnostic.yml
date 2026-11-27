@@ -42,3 +42,15 @@ jobs:
             .work/wechat-canvas-diagnostic-052g/build-info.json
           if-no-files-found: warn
           retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: wechat-canvas-052g-framework-delivery
+          path: |
+            .work/wechat-canvas-diagnostic-052g/project/host.js
+            .work/wechat-canvas-diagnostic-052g/project/game.js
+            .work/wechat-canvas-diagnostic-052g/project/game.json
+            .work/wechat-canvas-diagnostic-052g/project/project.config.json
+            .work/wechat-canvas-diagnostic-052g/project/diagnostic-contract.json
+          if-no-files-found: error
+          retention-days: 7
