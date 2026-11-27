@@ -3,6 +3,7 @@ import runtime from '../bootstrap/runtime.cjs';
 import {installWxDomCanvas} from '../runtime/wx-dom-canvas.mjs';
 import {createBrowserEnvironment} from '../runtime/browser-environment.mjs';
 import {createURLSearchParamsCtor} from '../runtime/url-search-params.mjs';
+import {createComputedStyleFacade} from '../runtime/computed-style-facade.mjs';
 import fpRuntime from '../runtime/float-pigment-runtime.cjs';
 
 const {createLocalFetch,createStorageAdapter}=runtime;
@@ -35,6 +36,8 @@ export function startOriginalEntry(wx,loadEngine,html,layoutPlan,host=globalThis
   const fetch=createLocalFetch(wx);
   const storage=createStorageAdapter(wx,'h5publisher:wechat:original-entry:');
   const environment=createBrowserEnvironment({wx,window,canvas:canvas.screen,host,fetch,storage});
+  const computedStyle=createComputedStyleFacade(layoutPlan,window);
+  installWindowValue(window,'getComputedStyle',computedStyle.getComputedStyle);
   const timers=timerPair(host);
   const URLSearchParams=createURLSearchParamsCtor(host?.URLSearchParams);
   installWindowValue(window,'URLSearchParams',URLSearchParams);
@@ -71,7 +74,8 @@ export function startOriginalEntry(wx,loadEngine,html,layoutPlan,host=globalThis
     layoutBackend:'pending',
     wxWebAssembly:'pending',
     cssPlanRules:layoutPlan.rules.length,
-    cssPlanReady:true
+    cssPlanReady:true,
+    computedStyle:'source-plan'
   };
   let timer=null,disposed=false,engine;
 
@@ -123,6 +127,7 @@ export function startOriginalEntry(wx,loadEngine,html,layoutPlan,host=globalThis
     window,
     document,
     layoutPlan,
+    computedStyle,
     screen:canvas.screen,
     canvasBridge:canvas.bridge,
     environment,
