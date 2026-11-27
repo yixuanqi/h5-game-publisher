@@ -3,7 +3,7 @@ import {calculate} from 'specificity';
 import {parseHTML} from 'linkedom';
 import {resolveCascade} from './cascade.mjs';
 import {boxProperties,expandBox,splitTop} from './box-model.mjs';
-const paintProps=new Set(['font-family','font-size','font-weight','line-height','letter-spacing','text-align','color','background','border-radius','border-bottom-color','opacity','min-height','content','top','transform']);
+const paintProps=new Set(['font-family','font-size','font-weight','line-height','letter-spacing','text-align','color','background','border-radius','border-bottom-color','opacity','min-height','content','top','transform','justify-content','flex-wrap','text-transform']);
 const relevant=p=>boxProperties.has(p)||paintProps.has(p)||p.startsWith('--');
 const decls=n=>(n.nodes||[]).filter(d=>d.type==='decl'&&relevant(d.prop)).map(({prop,value,important})=>({prop,value,important:!!important}));
 function expand(prop,value){
@@ -31,10 +31,10 @@ export function compilePaint(css){
   }
   walk(postcss.parse(css).nodes);return {normal,before};
 }
-export function textColumnSource(compiled,html,selector,env){
+export function textColumnSource(compiled,html,selector,env,{tree=false}={}){
   const {document}=parseHTML(html),p=document.querySelector(selector),cache=new WeakMap();
   if(!p)throw Error('Missing column '+selector);
-  const inherit=['font-family','font-size','font-weight','line-height','letter-spacing','color','text-align'];
+  const inherit=['font-family','font-size','font-weight','line-height','letter-spacing','color','text-align','text-transform'];
   function resolve(el,rules,inline=[]){
     const r=resolveCascade({rules,inline,env,expandDeclaration:expand,matches:s=>el.matches(s),specificity:s=>{const {A,B,C}=calculate(s);return [A,B,C];}});
     if(r.unsupported.length)throw Error('Unsupported source paint selector: '+JSON.stringify(r.unsupported.slice(0,3)));
@@ -64,6 +64,14 @@ export function textColumnSource(compiled,html,selector,env){
     for(const [k,v] of Object.entries(raw))s[k]=v==='inherit'&&parent[k]!==undefined?parent[k]:v;
     // Resolve only consumed properties lazily at leaf to avoid unrelated ancestor CSS expressions.
     cache.set(el,s);return s;
+  }
+  if(tree){
+    function visit(el,key){
+      const raw=get(el);
+      if(raw.display==='none')return {key,style:{display:'none'},children:[],text:''};
+      return {key,style:vars(raw),text:el.children.length?'':el.textContent.trim(),children:[...el.children].map((c,i)=>visit(c,key+'/'+i))};
+    }
+    return visit(p,'root');
   }
   const rawParent=get(p);
   const parent=Object.fromEntries(Object.entries(rawParent).filter(([k])=>['row-gap','column-gap','display','flex-direction'].includes(k)));
