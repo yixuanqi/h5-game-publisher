@@ -17,7 +17,7 @@ import {createFrameScheduler} from './frame-scheduler.mjs';
 import {installViewportBridge} from './viewport-bridge.mjs';
 import {createBrowserEnvironment} from './browser-environment.mjs';
 import {performance as nodePerformance} from 'node:perf_hooks';
-const {createLocalFetch}=createRequire(import.meta.url)('../bootstrap/runtime.cjs');
+const {createLocalFetch,createStorageAdapter}=createRequire(import.meta.url)('../bootstrap/runtime.cjs');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..');
 const spec=JSON.parse(fs.readFileSync(path.join(root,'platforms/wechat/bootstrap/compatibility.json'),'utf8'));
 const checkout=fs.realpathSync(process.argv[2]||'upstream'),source=path.join(checkout,'docs',spec.game);
@@ -33,7 +33,8 @@ const report={stage:'0.5.2b-canvas-spike',sourceSha:spec.sourceSha,framework:git
 let rawBefore;
 async function attempt(code,html,{canvas=false,navigator=false,timers=false,packagedFetch=false,performanceBridge=false,frames=false,composed=false}={}){
   const {window,document}=parseHTML(html);
-  const wxEnv={getWindowInfo:()=>({windowWidth:844,windowHeight:390,pixelRatio:2,screenWidth:844,screenHeight:390}),getSystemInfoSync:()=>({windowWidth:844,windowHeight:390,pixelRatio:2,screenWidth:844,screenHeight:390,platform:'android',system:'Android 14',language:'zh_CN',version:'8.0'}),getDeviceInfo:()=>({platform:'android',system:'Android 14'}),getAppBaseInfo:()=>({language:'zh_CN',version:'8.0'}),getPerformance:()=>({now:()=>nodePerformance.now()*1000})};
+  const storageMap=new Map();
+  const wxEnv={getWindowInfo:()=>({windowWidth:844,windowHeight:390,pixelRatio:2,screenWidth:844,screenHeight:390}),getSystemInfoSync:()=>({windowWidth:844,windowHeight:390,pixelRatio:2,screenWidth:844,screenHeight:390,platform:'android',system:'Android 14',language:'zh_CN',version:'8.0'}),getDeviceInfo:()=>({platform:'android',system:'Android 14'}),getAppBaseInfo:()=>({language:'zh_CN',version:'8.0'}),getPerformance:()=>({now:()=>nodePerformance.now()*1000}),getStorageSync:k=>storageMap.get(k)??'',setStorageSync:(k,v)=>storageMap.set(k,v),removeStorageSync:k=>storageMap.delete(k)};
   const viewport=composed?null:installViewportBridge(window,wxEnv);
   const bridge=canvas?installCanvasBridge(document,(w,h)=>createCanvas(w,h)):null;
   let nav=navigator?createNavigatorBridge({platform:'android',system:'Android 14',language:'zh_CN',wechatVersion:'8.0'}):undefined;
@@ -61,7 +62,7 @@ async function attempt(code,html,{canvas=false,navigator=false,timers=false,pack
     }catch{try{window.requestAnimationFrame=frame.requestAnimationFrame;window.cancelAnimationFrame=frame.cancelAnimationFrame;}catch{}}
   }
   if(composed){
-    environment=createBrowserEnvironment({wx:wxEnv,window,canvas:null,host:rawFrameHost,fetch:fetchLocal});
+    environment=createBrowserEnvironment({wx:wxEnv,window,canvas:null,host:rawFrameHost,fetch:fetchLocal,storage:createStorageAdapter(wxEnv,'h5publisher:wechat:original-entry-diagnostic:')});
     nav=environment.navigator;webPerformance=environment.performance;frame={requestAnimationFrame:environment.requestAnimationFrame,cancelAnimationFrame:environment.cancelAnimationFrame};
   }
   const observed=[];
