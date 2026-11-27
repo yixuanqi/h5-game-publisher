@@ -1,0 +1,42 @@
+name: WeChat V0.5.2g Canvas-only diagnostic (not release)
+on:
+  push:
+    branches: ['experiment/v052g-canvas']
+    paths:
+      - 'platforms/wechat/canvas-diagnostic/**'
+      - 'tests/wechat-canvas-diagnostic.test.mjs'
+      - '.github/workflows/wechat-canvas-diagnostic.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  canvas:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test tests/wechat-canvas-diagnostic.test.mjs
+      - uses: actions/checkout@v4
+        with:
+          repository: yixuanqi/PhotoGallery
+          ref: cdb508594cc610733f248ec5d4123a3b9d954981
+          path: upstream
+          sparse-checkout: docs/ashen-bell-vow
+          persist-credentials: false
+      - run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund esbuild@0.25.12 linkedom@0.18.15 postcss@8.5.6 specificity@1.0.0 @napi-rs/canvas@0.1.80
+      - run: node platforms/wechat/canvas-diagnostic/build.mjs upstream
+      - run: node --check .work/wechat-canvas-diagnostic-052g/project/game.js && node platforms/wechat/canvas-diagnostic/host-probe.cjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wechat-canvas-diagnostic-052g-evidence-NOT-RELEASE
+          path: |
+            .work/wechat-canvas-diagnostic-052g/evidence/
+            .work/wechat-canvas-diagnostic-052g/build-info.json
+          if-no-files-found: warn
+          retention-days: 7
