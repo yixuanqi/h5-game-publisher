@@ -8,6 +8,9 @@ test('runtime CSS expansion covers authored flex/inset/gap/overflow forms and re
   assert.deepEqual(expandRuntimeDeclaration('inset','0'),[['top','0'],['right','0'],['bottom','0'],['left','0']]);
   assert.deepEqual(expandRuntimeDeclaration('gap','8px 14px'),[['row-gap','8px'],['column-gap','14px']]);
   assert.deepEqual(expandRuntimeDeclaration('overflow','hidden'),[['overflow-x','hidden'],['overflow-y','hidden']]);
+  assert.deepEqual(expandRuntimeDeclaration('grid-column','1 / -1'),[['grid-column','1 / -1']]);
+  assert.deepEqual(expandRuntimeDeclaration('grid-row','1 / 3'),[['grid-row','1 / 3']]);
+  assert.deepEqual(expandRuntimeDeclaration('white-space','nowrap'),[['white-space','nowrap']]);
   assert.throws(()=>expandRuntimeDeclaration('flex','grow potato'),/Unsupported flex/);
 });
 
