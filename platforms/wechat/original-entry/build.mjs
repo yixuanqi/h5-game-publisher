@@ -7,6 +7,7 @@ import {fileURLToPath} from 'node:url';
 import {build as bundle} from 'esbuild';
 import {exportGame} from '../../../scripts/import-blog.mjs';
 import {buildFloatPigmentWasm} from '../runtime/float-pigment-build.mjs';
+import {compileRuntimeCssPlan} from './css-plan-build.mjs';
 import {snapshot,assertSnapshot,assertDisjoint,digestManifest,gitBlob} from '../../../scripts/source-integrity.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
@@ -42,6 +43,7 @@ try{
   const imported=exportGame(spec.game,checkout,raw),rawBefore=snapshot(raw);
   const html=fs.readFileSync(path.join(raw,'index.html'),'utf8');
   const css=fs.readFileSync(path.join(raw,'styles.css'),'utf8');
+  const layoutPlan=compileRuntimeCssPlan(css);
 
   const scripts=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)].map(m=>({attrs:m[1].trim(),body:m[2]}));
   const inline=scripts.filter(x=>!/\bsrc\s*=/.test(x.attrs));
@@ -52,6 +54,7 @@ try{
   fs.cpSync(path.join(raw,'data'),path.join(project,'data'),{recursive:true,errorOnExist:true,force:false});
   const floatPigment=buildFloatPigmentWasm({vendor,workDir:path.join(work,'float-pigment-build'),outFile:path.join(project,'float-pigment-layout.wasm')});
   fs.writeFileSync(path.join(project,'source-styles.css'),css);
+  writeJson(path.join(project,'layout-plan.json'),layoutPlan);
   fs.writeFileSync(path.join(project,'html.js'),"'use strict';\nmodule.exports="+JSON.stringify(html)+";\n");
 
   const require=createRequire(import.meta.url),linkedomPkg=require('linkedom/package.json');
@@ -112,7 +115,8 @@ try{
   fs.writeFileSync(path.join(project,'game.js'),[
     "'use strict';",
     "const html=require('./html.js');",
-    "module.exports=require('./host.js').startOriginalEntry(wx,()=>require('./engine.js'),html,globalThis);",
+    "const layoutPlan=require('./layout-plan.json');",
+    "module.exports=require('./host.js').startOriginalEntry(wx,()=>require('./engine.js'),html,layoutPlan,globalThis);",
     ''
   ].join('\n'));
 
@@ -153,6 +157,7 @@ try{
     rawFilesSha256:imported.sourceFilesSha256,
     originalHtml:{sha256:sha256(html),bytes:Buffer.byteLength(html)},
     originalCss:{sha256:sha256(css),bytes:Buffer.byteLength(css),packagedAs:'source-styles.css'},
+    layoutPlan:{schema:layoutPlan.schema,rules:layoutPlan.rules.length,maxOrder:layoutPlan.maxOrder,skippedPseudoElements:layoutPlan.skippedPseudoElements.length,sha256:sha256(JSON.stringify(layoutPlan))},
     inlineScripts:[{sha256:sha256(inline[0].body),bytes:Buffer.byteLength(inline[0].body),policy:'browser startup/network diagnostic intentionally not executed in Mini Game host'}],
     moduleEntry:'./src/main.js?v=46.1.0',
     linkedom:{version:linkedomPkg.version,license:linkedomPkg.license,entry:'linkedom/worker'},
