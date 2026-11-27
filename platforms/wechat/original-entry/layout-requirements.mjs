@@ -26,6 +26,8 @@ export function analyzeLayoutRequirements(plan){
         if(/\b(?:min-content|max-content)\b/i.test(value))add(found,'gridIntrinsicTracks',rule,d);
       }
       if(prop==='grid-column'||prop==='grid-row')add(found,'gridPlacement',rule,d);
+      if(prop==='aspect-ratio'&&value!=='auto')add(found,'aspectRatio',rule,d);
+      if(prop==='order'&&Number(value)!==0)add(found,'order',rule,d);
       if(/\bcalc\(/i.test(value))add(found,'calc',rule,d);
       if(prop==='position'&&value==='absolute')add(found,'absolutePosition',rule,d);
       if(prop==='position'&&value==='fixed')add(found,'fixedPosition',rule,d);
@@ -60,7 +62,9 @@ export const FLOAT_PIGMENT_0105_CAPABILITIES=Object.freeze({
   absolutePosition:true,
   fixedPosition:true,
   stickyPosition:true,
-  flexWrap:true
+  flexWrap:true,
+  aspectRatio:false,
+  order:false
 });
 export const TAFFY_0160_DECLARED_CAPABILITIES=Object.freeze({
   flex:true,
@@ -75,5 +79,7 @@ export const TAFFY_0160_DECLARED_CAPABILITIES=Object.freeze({
   absolutePosition:true,
   fixedPosition:true,
   stickyPosition:true,
-  flexWrap:true
+  flexWrap:true,
+  aspectRatio:true,
+  order:true
 });
