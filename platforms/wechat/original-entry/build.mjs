@@ -6,18 +6,21 @@ import {createRequire} from 'node:module';
 import {fileURLToPath} from 'node:url';
 import {build as bundle} from 'esbuild';
 import {exportGame} from '../../../scripts/import-blog.mjs';
+import {buildFloatPigmentWasm} from '../runtime/float-pigment-build.mjs';
 import {snapshot,assertSnapshot,assertDisjoint,digestManifest,gitBlob} from '../../../scripts/source-integrity.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const root=path.resolve(here,'../../..');
 const spec=JSON.parse(fs.readFileSync(path.join(root,'platforms/wechat/bootstrap/compatibility.json'),'utf8'));
 const checkout=fs.realpathSync(process.argv[2]||path.join(root,'upstream'));
-const appid=process.argv[3]||'touristappid';
+const vendor=fs.realpathSync(process.argv[3]||path.join(root,'vendor-float-pigment'));
+const appid=process.argv[4]||'touristappid';
 if(!/^(?:touristappid|wx[0-9a-f]{16})$/.test(appid))throw Error('Invalid AppID');
 
 const work=path.join(root,'.work/wechat-original-entry-052f');
 const project=path.join(work,'project'),raw=path.join(work,'raw');
 assertDisjoint(checkout,work);
+assertDisjoint(vendor,work);
 if(fs.existsSync(work))throw Error('Use a fresh original-entry workspace: '+work);
 
 function git(cwd,...args){
@@ -47,6 +50,7 @@ try{
   if(external.length!==1||!/type=["']module["']/.test(external[0].attrs)||!/src=["']\.\/src\/main\.js\?v=46\.1\.0["']/.test(external[0].attrs))throw Error('Frozen module entry contract changed');
 
   fs.cpSync(path.join(raw,'data'),path.join(project,'data'),{recursive:true,errorOnExist:true,force:false});
+  const floatPigment=buildFloatPigmentWasm({vendor,workDir:path.join(work,'float-pigment-build'),outFile:path.join(project,'float-pigment-layout.wasm')});
   fs.writeFileSync(path.join(project,'source-styles.css'),css);
   fs.writeFileSync(path.join(project,'html.js'),"'use strict';\nmodule.exports="+JSON.stringify(html)+";\n");
 
@@ -57,6 +61,7 @@ try{
   if(!licensePath)throw Error('Linkedom license file missing');
   fs.mkdirSync(path.join(project,'third-party'),{recursive:true});
   fs.copyFileSync(licensePath,path.join(project,'third-party/linkedom-ISC.txt'));
+  fs.copyFileSync(path.join(vendor,'LICENSE'),path.join(project,'third-party/float-pigment-MIT.txt'));
 
   const hostResult=await bundle({
     entryPoints:[path.join(here,'host.mjs')],
@@ -150,6 +155,7 @@ try{
     inlineScripts:[{sha256:sha256(inline[0].body),bytes:Buffer.byteLength(inline[0].body),policy:'browser startup/network diagnostic intentionally not executed in Mini Game host'}],
     moduleEntry:'./src/main.js?v=46.1.0',
     linkedom:{version:linkedomPkg.version,license:linkedomPkg.license,entry:'linkedom/worker'},
+    floatPigment:{...floatPigment.vendor,wasm:{bytes:floatPigment.bytes,sha256:floatPigment.sha256},toolchain:floatPigment.toolchain},
     privateAliases:Object.keys(define),
     engineInputs:Object.keys(engineResult.metafile.inputs).length,
     hostInputs:Object.keys(hostResult.metafile.inputs).length,
@@ -166,6 +172,8 @@ try{
     releaseReady:false,
     expectedStateGlobal:'module.exports.state',
     successPhase:'FIRST_FRAME',
+    requiredLayoutBackend:'float-pigment',
+    requiredWasmRuntime:'WXWebAssembly',
     blockersAreEvidence:true
   });
   console.log(JSON.stringify({project,bytes,engineInputs:info.engineInputs,hostInputs:info.hostInputs,releaseReady:false}));
