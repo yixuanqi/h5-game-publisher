@@ -47,8 +47,11 @@ test('Mini Game navigator exposes only truthful passive environment fields',()=>
 });
 
 test('performance bridge keeps browser millisecond units and omits Chromium memory',()=>{
-  const values=[2_000_000,2_004_250],p=createPerformanceBridge({getPerformance:()=>({now:()=>values.shift()})});
-  assert.equal(p.now(),2000);assert.equal(p.now(),2004.25);assert.equal('memory' in p,false);
+  let wall=10000,raw=2_000_000;
+  const p=createPerformanceBridge({getPerformance:()=>({now:()=>raw})},{wallNow:()=>wall});
+  const origin=p.now();assert.equal(origin,0);
+  wall+=100;raw+=100_000;assert.equal(p.now()-origin,100);assert.equal(p.clockUnit,'us');
+  raw+=4_250;wall+=4;assert.equal(p.now()-origin,104.25);assert.equal('memory' in p,false);
 });
 
 test('frame scheduler uses native queue but supplies normalized Web clock timestamp',()=>{
