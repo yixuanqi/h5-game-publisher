@@ -5,6 +5,8 @@ on:
     paths:
       - 'platforms/wechat/canvas-diagnostic/**'
       - 'platforms/wechat/runtime/json-module-build.mjs'
+      - 'platforms/wechat/runtime/isolated-window.mjs'
+      - 'tests/wechat-isolated-window.test.mjs'
       - 'tests/wechat-json-module-build.test.mjs'
       - 'tests/wechat-canvas-diagnostic.test.mjs'
       - 'tests/wechat-canvas-diagnostic-loader.test.mjs'
@@ -23,7 +25,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test tests/wechat-canvas-diagnostic.test.mjs tests/wechat-canvas-diagnostic-loader.test.mjs tests/wechat-json-module-build.test.mjs
+      - run: node --test tests/wechat-canvas-diagnostic.test.mjs tests/wechat-canvas-diagnostic-loader.test.mjs tests/wechat-json-module-build.test.mjs tests/wechat-isolated-window.test.mjs
       - uses: actions/checkout@v4
         with:
           repository: yixuanqi/PhotoGallery

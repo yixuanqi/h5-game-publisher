@@ -1,4 +1,5 @@
 import {parseHTML} from 'linkedom/worker';
+import {createIsolatedWindow} from '../runtime/isolated-window.mjs';
 import runtime from '../bootstrap/runtime.cjs';
 import {installWxDomCanvas} from '../runtime/wx-dom-canvas.mjs';
 import {createBrowserEnvironment} from '../runtime/browser-environment.mjs';
@@ -30,7 +31,8 @@ export function startCanvasDiagnostic(wx,loadEngine,html,layoutPlan,host=globalT
   if(typeof html!=='string'||!html.includes('id="gameCanvas"'))throw Error('Frozen HTML payload required');
   if(!layoutPlan||layoutPlan.schema!==1||!Array.isArray(layoutPlan.rules))throw Error('Precompiled CSS layout plan required');
 
-  const {window,document}=parseHTML(html);
+  const {window:domWindow,document}=parseHTML(html);
+  const window=createIsolatedWindow(domWindow);
   const canvas=installWxDomCanvas(document,wx);
   const fetch=createLocalFetch(wx);
   const storage=createStorageAdapter(wx,'h5publisher:wechat:canvas-diagnostic:');
@@ -89,6 +91,7 @@ export function startCanvasDiagnostic(wx,loadEngine,html,layoutPlan,host=globalT
     if(disposed)return;
     state.phase='ERROR';
     state.error=error?.stack||String(error);
+    host.console?.error('[H5PUBLISHER] original entry failed:',state.error);
   }
   window.__ABV_SHOW_FATAL__=message=>fail(Error(String(message)));
   function inspect(){
@@ -104,7 +107,7 @@ export function startCanvasDiagnostic(wx,loadEngine,html,layoutPlan,host=globalT
       // Exercise the original click handler; not native touch or UI rendering evidence.
       button.dispatchEvent(new window.Event('click',{bubbles:true,cancelable:true}));
     }
-    if(state.checks>=600){state.phase='BOOT_TIMEOUT';state.error='Original Canvas playing evidence did not reach gate within bounded observation';return;}
+    if(state.checks>=600){state.phase='BOOT_TIMEOUT';state.error='Original Canvas playing evidence did not reach gate within bounded observation';host.console?.error('[H5PUBLISHER]',state.error);return;}
   }
 
   const ready=(async()=>{

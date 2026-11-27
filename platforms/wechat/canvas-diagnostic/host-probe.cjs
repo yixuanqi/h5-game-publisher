@@ -19,6 +19,9 @@ const wx={
  getStorageSync:k=>storage.get(k)??'',setStorageSync:(k,v)=>storage.set(k,v),removeStorageSync:k=>storage.delete(k),
  getFileSystemManager:()=>({readFileSync:(name,enc)=>fs.readFileSync(path.join(project,name),enc)})
 };
+// Reproduce the platform-owned location constraint from DevTools 3.18.1.
+const nativeLocation=Object.freeze({href:'https://native-host.invalid/',protocol:'https:'});
+Object.defineProperty(globalThis,'location',{value:nativeLocation,configurable:false,writable:false});
 globalThis.wx=wx;
 let app,report={result:'fail',backend:'Node/Skia simulated wx API, not official runtime',releaseReady:false,officialDevTools:'not-run'};
 (async()=>{
@@ -27,6 +30,10 @@ let app,report={result:'fail',backend:'Node/Skia simulated wx API, not official 
   app=require(path.join(project,'game.js'));const state=await app.ready;report.state=state;
   assert.equal(state.phase,'CANVAS_PLAYING_OBSERVED',state.error||state.phase);
   assert.equal(state.canvas.playingReady,true);
+  assert.equal(globalThis.location,nativeLocation,'platform location must remain untouched');
+  assert.equal(app.window.location.protocol,'wechatgame:');
+  assert.equal(app.window.window,app.window);
+  report.lockedNativeLocationPreserved=true;
   report.result='pass';
  }catch(e){report.error=String(e.stack||e);if(app)report.state=app.state;process.exitCode=1;}
  finally{

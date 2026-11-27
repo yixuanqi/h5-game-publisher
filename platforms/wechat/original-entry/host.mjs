@@ -1,4 +1,5 @@
 import {parseHTML} from 'linkedom/worker';
+import {createIsolatedWindow} from '../runtime/isolated-window.mjs';
 import runtime from '../bootstrap/runtime.cjs';
 import {installWxDomCanvas} from '../runtime/wx-dom-canvas.mjs';
 import {createBrowserEnvironment} from '../runtime/browser-environment.mjs';
@@ -32,7 +33,8 @@ export function startOriginalEntry(wx,loadEngine,html,layoutPlan,layoutRequireme
   if(!layoutPlan||layoutPlan.schema!==1||!Array.isArray(layoutPlan.rules))throw Error('Precompiled CSS layout plan required');
   if(!layoutRequirements||layoutRequirements.schema!==1||!layoutRequirements.backends)throw Error('Layout capability contract required');
 
-  const {window,document}=parseHTML(html);
+  const {window:domWindow,document}=parseHTML(html);
+  const window=createIsolatedWindow(domWindow);
   const canvas=installWxDomCanvas(document,wx);
   const fetch=createLocalFetch(wx);
   const storage=createStorageAdapter(wx,'h5publisher:wechat:original-entry:');
@@ -87,6 +89,7 @@ export function startOriginalEntry(wx,loadEngine,html,layoutPlan,layoutRequireme
     if(disposed)return;
     state.phase='ERROR';
     state.error=error?.stack||String(error);
+    host.console?.error('[H5PUBLISHER] original entry failed:',state.error);
   }
   window.__ABV_SHOW_FATAL__=message=>fail(Error(String(message)));
   function inspect(){
@@ -95,7 +98,7 @@ export function startOriginalEntry(wx,loadEngine,html,layoutPlan,layoutRequireme
     state.moduleLoaded=window.__ABV_MODULE_LOADED__===true;
     state.booted=window.__ABV_BOOTED__===true;
     if(state.booted){state.phase='FIRST_FRAME';return;}
-    if(state.checks>=100){state.phase='BOOT_TIMEOUT';state.error='Original entry did not reach __ABV_BOOTED__ within bounded observation';return;}
+    if(state.checks>=100){state.phase='BOOT_TIMEOUT';state.error='Original entry did not reach __ABV_BOOTED__ within bounded observation';host.console?.error('[H5PUBLISHER]',state.error);return;}
   }
 
   let layoutBackend=null;
