@@ -15,6 +15,7 @@ import {createNavigatorBridge} from './navigator-bridge.mjs';
 import {createPerformanceBridge} from './performance-bridge.mjs';
 import {createFrameScheduler} from './frame-scheduler.mjs';
 import {installViewportBridge} from './viewport-bridge.mjs';
+import {createBrowserEnvironment} from './browser-environment.mjs';
 import {performance as nodePerformance} from 'node:perf_hooks';
 const {createLocalFetch}=createRequire(import.meta.url)('../bootstrap/runtime.cjs');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..');
@@ -30,32 +31,38 @@ const before=snapshot(source);
 fs.mkdirSync(out,{recursive:true});
 const report={stage:'0.5.2b-canvas-spike',sourceSha:spec.sourceSha,framework:git(root,'rev-parse','HEAD'),result:'fail',backend:'Skia / Node diagnostic',domSemantics:'linkedom/worker@0.18.15',officialDevTools:'not-run',gameplayParity:'not-run',releaseReady:false};
 let rawBefore;
-async function attempt(code,html,{canvas=false,navigator=false,timers=false,packagedFetch=false,performanceBridge=false,frames=false}={}){
+async function attempt(code,html,{canvas=false,navigator=false,timers=false,packagedFetch=false,performanceBridge=false,frames=false,composed=false}={}){
   const {window,document}=parseHTML(html);
-  const viewport=installViewportBridge(window,{getWindowInfo:()=>({windowWidth:844,windowHeight:390,pixelRatio:2,screenWidth:844,screenHeight:390}),getSystemInfoSync:()=>({windowWidth:844,windowHeight:390,pixelRatio:2,screenWidth:844,screenHeight:390,platform:'android'}),getDeviceInfo:()=>({platform:'android'})});
+  const wxEnv={getWindowInfo:()=>({windowWidth:844,windowHeight:390,pixelRatio:2,screenWidth:844,screenHeight:390}),getSystemInfoSync:()=>({windowWidth:844,windowHeight:390,pixelRatio:2,screenWidth:844,screenHeight:390,platform:'android',system:'Android 14',language:'zh_CN',version:'8.0'}),getDeviceInfo:()=>({platform:'android',system:'Android 14'}),getAppBaseInfo:()=>({language:'zh_CN',version:'8.0'}),getPerformance:()=>({now:()=>nodePerformance.now()*1000})};
+  const viewport=composed?null:installViewportBridge(window,wxEnv);
   const bridge=canvas?installCanvasBridge(document,(w,h)=>createCanvas(w,h)):null;
-  const nav=navigator?createNavigatorBridge({platform:'android',system:'Android 14',language:'zh_CN',wechatVersion:'8.0'}):undefined;
+  let nav=navigator?createNavigatorBridge({platform:'android',system:'Android 14',language:'zh_CN',wechatVersion:'8.0'}):undefined;
   if(nav){
     try{Object.defineProperty(window,'navigator',{configurable:true,value:nav});}
     catch{try{window.navigator=nav;}catch{}}
   }
   const fetchLocal=packagedFetch?createLocalFetch({getFileSystemManager:()=>({readFileSync(name,enc){return fs.readFileSync(path.join(raw,name),enc);}})}):undefined;
-  const webPerformance=performanceBridge?createPerformanceBridge({getPerformance:()=>({now:()=>nodePerformance.now()*1000})}):undefined;
+  let webPerformance=performanceBridge?createPerformanceBridge(wxEnv):undefined;
   if(webPerformance){
     try{Object.defineProperty(window,'performance',{configurable:true,value:webPerformance});}
     catch{try{window.performance=webPerformance;}catch{}}
   }
   const frameQueue=new Map();let frameId=0;
-  const rawFrameHost=frames?{
+  const rawFrameHost=(frames||composed)?{
     requestAnimationFrame(cb){const id=++frameId;frameQueue.set(id,cb);return id;},
     cancelAnimationFrame(id){frameQueue.delete(id);}
   }:undefined;
-  const frame=frames?createFrameScheduler(null,webPerformance,rawFrameHost):undefined;
+  let frame=frames?createFrameScheduler(null,webPerformance,rawFrameHost):undefined;
+  let environment;
   if(frame){
     try{
       Object.defineProperty(window,'requestAnimationFrame',{configurable:true,value:frame.requestAnimationFrame});
       Object.defineProperty(window,'cancelAnimationFrame',{configurable:true,value:frame.cancelAnimationFrame});
     }catch{try{window.requestAnimationFrame=frame.requestAnimationFrame;window.cancelAnimationFrame=frame.cancelAnimationFrame;}catch{}}
+  }
+  if(composed){
+    environment=createBrowserEnvironment({wx:wxEnv,window,canvas:null,host:rawFrameHost,fetch:fetchLocal});
+    nav=environment.navigator;webPerformance=environment.performance;frame={requestAnimationFrame:environment.requestAnimationFrame,cancelAnimationFrame:environment.cancelAnimationFrame};
   }
   const observed=[];
   const observedConsole={
@@ -80,7 +87,7 @@ async function attempt(code,html,{canvas=false,navigator=false,timers=false,pack
   }
   const asyncErrors=observed.filter(x=>x.level==='error');
   const bootVerified=window.__ABV_BOOTED__===true;
-  const viewportState={width:window.innerWidth,height:window.innerHeight,dpr:window.devicePixelRatio,landscape:window.matchMedia('(orientation: landscape)').matches,coarse:window.matchMedia('(hover: none) and (pointer: coarse)').matches};viewport.dispose();
+  const viewportState={width:window.innerWidth,height:window.innerHeight,dpr:window.devicePixelRatio,landscape:window.matchMedia('(orientation: landscape)').matches,coarse:window.matchMedia('(hover: none) and (pointer: coarse)').matches};if(environment)environment.dispose();else viewport.dispose();
   return {...outcome,asyncErrors,observed:observed.slice(-20),queuedFrames:frameQueue.size,stats:bridge?{...bridge.stats}:null,navigator:nav?{userAgent:nav.userAgent,platform:nav.platform,maxTouchPoints:nav.maxTouchPoints,serviceWorker:'serviceWorker' in nav}:null,viewport:viewportState,bootVerified,cssLayoutVerified:false};
 }
 try{
@@ -112,6 +119,11 @@ try{
   assert.ok(report.green.stats.contexts>0&&report.green.stats.radialGradients>0,'Frame scheduler slice lost native Canvas progress');
   assert.doesNotMatch(JSON.stringify(report.green.asyncErrors),/requestAnimationFrame is not defined/,'Frame scheduler blocker persists');
   assert.ok(report.green.bootVerified||report.green.asyncErrors.length>0,'One native-style frame produced neither boot evidence nor an observable blocker');
+  report.composedGreen=await attempt(code,html,{canvas:true,timers:true,packagedFetch:true,composed:true});
+  assert.ok(report.composedGreen.stats.contexts>0&&report.composedGreen.stats.radialGradients>0,'Composed browser environment lost native Canvas progress');
+  assert.doesNotMatch(JSON.stringify(report.composedGreen.asyncErrors),/navigator is not defined|performance is not defined|requestAnimationFrame is not defined/,'Composed browser environment regressed a verified global');
+  assert.deepEqual(report.composedGreen.viewport,{width:844,height:390,dpr:2,landscape:true,coarse:true});
+  assert.ok(report.composedGreen.bootVerified||report.composedGreen.asyncErrors.length>0,'Composed environment produced neither boot evidence nor an observable blocker');
   // Independent native raster evidence, not a screenshot of the game or a visual parity result.
   const {document}=parseHTML('<html><body><canvas id="screen" width="32" height="32"></canvas></body></html>');
   const bridge=installCanvasBridge(document,(w,h)=>createCanvas(w,h));
