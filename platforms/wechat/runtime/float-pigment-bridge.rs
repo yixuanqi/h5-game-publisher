@@ -1,6 +1,6 @@
 use float_pigment_css::{
     length_num::LengthNum,
-    typing::{AlignItems, Display, FlexDirection, JustifyContent},
+    typing::{AlignItems, AlignSelf, BoxSizing, Display, FlexDirection, FlexWrap, JustifyContent, Position},
 };
 use float_pigment_forest::{ChildOperation, Len, Node, StyleSetter};
 use float_pigment_forest::ffi::{
@@ -86,6 +86,109 @@ pub unsafe extern "C" fn FpNodeSetHeight(node: *mut Node, unit: u32, value: f32)
     node.set_height(value); 1
 }
 
+
+#[no_mangle]
+pub unsafe extern "C" fn FpNodeSetMinWidth(node: *mut Node, unit: u32, value: f32) -> u32 {
+    let (Some(node), Some(value)) = (node.as_ref(), length(unit, value)) else { return 0; };
+    node.set_min_width(value); 1
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn FpNodeSetMinHeight(node: *mut Node, unit: u32, value: f32) -> u32 {
+    let (Some(node), Some(value)) = (node.as_ref(), length(unit, value)) else { return 0; };
+    node.set_min_height(value); 1
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn FpNodeSetMaxWidth(node: *mut Node, unit: u32, value: f32) -> u32 {
+    let (Some(node), Some(value)) = (node.as_ref(), length(unit, value)) else { return 0; };
+    node.set_max_width(value); 1
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn FpNodeSetMaxHeight(node: *mut Node, unit: u32, value: f32) -> u32 {
+    let (Some(node), Some(value)) = (node.as_ref(), length(unit, value)) else { return 0; };
+    node.set_max_height(value); 1
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn FpNodeSetBoxSizing(node: *mut Node, code: u32) -> u32 {
+    let Some(node) = node.as_ref() else { return 0; };
+    let value = match code {
+        0 => BoxSizing::ContentBox,
+        1 => BoxSizing::PaddingBox,
+        2 => BoxSizing::BorderBox,
+        _ => return 0,
+    };
+    node.set_box_sizing(value); 1
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn FpNodeSetPadding(node: *mut Node, side: u32, unit: u32, value: f32) -> u32 {
+    let (Some(node), Some(value)) = (node.as_ref(), length(unit, value)) else { return 0; };
+    match side {
+        0 => node.set_padding_top(value),
+        1 => node.set_padding_right(value),
+        2 => node.set_padding_bottom(value),
+        3 => node.set_padding_left(value),
+        _ => return 0,
+    }
+    1
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn FpNodeSetMargin(node: *mut Node, side: u32, unit: u32, value: f32) -> u32 {
+    let (Some(node), Some(value)) = (node.as_ref(), length(unit, value)) else { return 0; };
+    match side {
+        0 => node.set_margin_top(value),
+        1 => node.set_margin_right(value),
+        2 => node.set_margin_bottom(value),
+        3 => node.set_margin_left(value),
+        _ => return 0,
+    }
+    1
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn FpNodeSetBorder(node: *mut Node, side: u32, unit: u32, value: f32) -> u32 {
+    let (Some(node), Some(value)) = (node.as_ref(), length(unit, value)) else { return 0; };
+    match side {
+        0 => node.set_border_top(value),
+        1 => node.set_border_right(value),
+        2 => node.set_border_bottom(value),
+        3 => node.set_border_left(value),
+        _ => return 0,
+    }
+    1
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn FpNodeSetPosition(node: *mut Node, code: u32) -> u32 {
+    let Some(node) = node.as_ref() else { return 0; };
+    let value = match code {
+        0 => Position::Static,
+        1 => Position::Relative,
+        2 => Position::Absolute,
+        3 => Position::Fixed,
+        4 => Position::Sticky,
+        _ => return 0,
+    };
+    node.set_position(value); 1
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn FpNodeSetInset(node: *mut Node, side: u32, unit: u32, value: f32) -> u32 {
+    let (Some(node), Some(value)) = (node.as_ref(), length(unit, value)) else { return 0; };
+    match side {
+        0 => node.set_top(value),
+        1 => node.set_right(value),
+        2 => node.set_bottom(value),
+        3 => node.set_left(value),
+        _ => return 0,
+    }
+    1
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn FpNodeSetGap(node: *mut Node, axis: u32, unit: u32, value: f32) -> u32 {
     let (Some(node), Some(value)) = (node.as_ref(), length(unit, value)) else { return 0; };
@@ -98,6 +201,59 @@ pub unsafe extern "C" fn FpNodeSetFlexDirection(node: *mut Node, code: u32) -> u
     let Some(node) = node.as_ref() else { return 0; };
     let value = match code { 0 => FlexDirection::Row, 1 => FlexDirection::RowReverse, 2 => FlexDirection::Column, 3 => FlexDirection::ColumnReverse, _ => return 0 };
     node.set_flex_direction(value); 1
+}
+
+
+#[no_mangle]
+pub unsafe extern "C" fn FpNodeSetFlexGrow(node: *mut Node, value: f32) -> u32 {
+    let Some(node) = node.as_ref() else { return 0; };
+    if !value.is_finite() || value < 0.0 { return 0; }
+    node.set_flex_grow(value); 1
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn FpNodeSetFlexShrink(node: *mut Node, value: f32) -> u32 {
+    let Some(node) = node.as_ref() else { return 0; };
+    if !value.is_finite() || value < 0.0 { return 0; }
+    node.set_flex_shrink(value); 1
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn FpNodeSetFlexBasis(node: *mut Node, unit: u32, value: f32) -> u32 {
+    let (Some(node), Some(value)) = (node.as_ref(), length(unit, value)) else { return 0; };
+    node.set_flex_basis(value); 1
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn FpNodeSetFlexWrap(node: *mut Node, code: u32) -> u32 {
+    let Some(node) = node.as_ref() else { return 0; };
+    let value = match code {
+        0 => FlexWrap::NoWrap,
+        1 => FlexWrap::Wrap,
+        2 => FlexWrap::WrapReverse,
+        _ => return 0,
+    };
+    node.set_flex_wrap(value); 1
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn FpNodeSetAlignSelf(node: *mut Node, code: u32) -> u32 {
+    let Some(node) = node.as_ref() else { return 0; };
+    let value = match code {
+        0 => AlignSelf::Auto,
+        1 => AlignSelf::Normal,
+        2 => AlignSelf::Stretch,
+        3 => AlignSelf::Center,
+        4 => AlignSelf::Start,
+        5 => AlignSelf::End,
+        6 => AlignSelf::SelfStart,
+        7 => AlignSelf::SelfEnd,
+        8 => AlignSelf::FlexStart,
+        9 => AlignSelf::FlexEnd,
+        10 => AlignSelf::Baseline,
+        _ => return 0,
+    };
+    node.set_align_self(value); 1
 }
 
 #[no_mangle]
