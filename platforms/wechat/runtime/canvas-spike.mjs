@@ -24,7 +24,7 @@ const before=snapshot(source);
 fs.mkdirSync(out,{recursive:true});
 const report={stage:'0.5.2b-canvas-spike',sourceSha:spec.sourceSha,framework:git(root,'rev-parse','HEAD'),result:'fail',backend:'Skia / Node diagnostic',officialDevTools:'not-run',gameplayParity:'not-run',releaseReady:false};
 let rawBefore;
-function attempt(code,html,{canvas=false,navigator=false}={}){
+async function attempt(code,html,{canvas=false,navigator=false}={}){
   const {window,document}=parseHTML(html);
   const bridge=canvas?installCanvasBridge(document,(w,h)=>createCanvas(w,h)):null;
   const nav=navigator?createNavigatorBridge({platform:'android',system:'Android 14',language:'zh_CN',wechatVersion:'8.0'}):undefined;
@@ -32,11 +32,23 @@ function attempt(code,html,{canvas=false,navigator=false}={}){
     try{Object.defineProperty(window,'navigator',{configurable:true,value:nav});}
     catch{try{window.navigator=nav;}catch{}}
   }
-  const context=vm.createContext({window,document,...(nav?{navigator:nav}:{})});
+  const observed=[];
+  const observedConsole={
+    log:(...args)=>observed.push({level:'log',text:args.map(String).join(' ')}),
+    warn:(...args)=>observed.push({level:'warn',text:args.map(String).join(' ')}),
+    error:(...args)=>observed.push({level:'error',text:args.map(String).join(' ')})
+  };
+  const context=vm.createContext({window,document,console:observedConsole,...(nav?{navigator:nav}:{})});
   let outcome;
-  try{vm.runInContext(code,context,{timeout:5000,filename:'original-main.bundle.js'});outcome={status:'returned-sync-only'};}
+  try{vm.runInContext(code,context,{timeout:5000,filename:'original-main.bundle.js'});outcome={status:'returned-sync'};}
   catch(e){outcome={status:'blocked',error:String(e),stack:String(e.stack).split('\n').slice(0,14)};}
-  return {...outcome,stats:bridge?{...bridge.stats}:null,navigator:nav?{userAgent:nav.userAgent,platform:nav.platform,maxTouchPoints:nav.maxTouchPoints,serviceWorker:'serviceWorker' in nav}:null,bootVerified:false,cssLayoutVerified:false};
+  // Let bootstrapGame() promise continuations and its own catch handler run.
+  await Promise.resolve();await Promise.resolve();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  await Promise.resolve();
+  const asyncErrors=observed.filter(x=>x.level==='error');
+  const bootVerified=window.__ABV_BOOTED__===true;
+  return {...outcome,asyncErrors,observed:observed.slice(-20),stats:bridge?{...bridge.stats}:null,navigator:nav?{userAgent:nav.userAgent,platform:nav.platform,maxTouchPoints:nav.maxTouchPoints,serviceWorker:'serviceWorker' in nav}:null,bootVerified,cssLayoutVerified:false};
 }
 try{
   const imported=exportGame(spec.game,checkout,raw);rawBefore=snapshot(raw);
@@ -45,15 +57,16 @@ try{
   const bundle=await build({absWorkingDir:raw,entryPoints:['src/main.js'],bundle:true,write:false,format:'iife',platform:'browser',target:'es2018',metafile:true,logLevel:'silent'});
   const code=bundle.outputFiles[0].text;report.bundleSha256=sha256(code);report.modules=Object.keys(bundle.metafile.inputs).length;
   assert.ok(bundle.metafile.inputs['src/main.js']);
-  report.red=attempt(code,html);
+  report.red=await attempt(code,html);
   assert.match(report.red.error||'',/createRadialGradient/,'Frozen Red blocker changed; inspect before adapting');
-  report.canvasOnly=attempt(code,html,{canvas:true});
+  report.canvasOnly=await attempt(code,html,{canvas:true});
   assert.ok(report.canvasOnly.stats.contexts>0&&report.canvasOnly.stats.radialGradients>0,'No real context/gradient reached in original entry');
   assert.match(report.canvasOnly.error||'',/navigator is not defined/,'Expected navigator Red blocker changed; inspect before adapting');
-  report.green=attempt(code,html,{canvas:true,navigator:true});
+  report.green=await attempt(code,html,{canvas:true,navigator:true});
   assert.ok(report.green.stats.contexts>0&&report.green.stats.radialGradients>0,'Navigator slice lost native Canvas progress');
   assert.equal(report.green.navigator.serviceWorker,false,'Mini Game navigator must not advertise ServiceWorker');
   assert.doesNotMatch(report.green.error||'',/navigator is not defined/,'Navigator blocker persists');
+  assert.ok(report.green.bootVerified||report.green.asyncErrors.length>0,'Async bootstrap produced neither boot evidence nor an observable blocker');
   // Independent native raster evidence, not a screenshot of the game or a visual parity result.
   const {document}=parseHTML('<html><body><canvas id="screen" width="32" height="32"></canvas></body></html>');
   const bridge=installCanvasBridge(document,(w,h)=>createCanvas(w,h));
