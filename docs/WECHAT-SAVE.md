@@ -1,3 +1,0 @@
-# V0.4b persistence slice
-
-Build --save to .work/wechat-save-46.1. V0.4a --play remains independent and does not persist progress. Original v42 serializer/deserializer, altar/rest/respawn extracted from pinned upstream; exact platform seams only: synchronous checked write in wx storage, no DOM refresh, no audio initialization. Save namespace save-test, not production. New/continue is selected by existing slot; no delete/overwrite controls. Death test is controlled state, not evidence of combat defeat. Other NPC/ending/upgrade hooks still explicitly blocked. Test with save-smoke.mjs and all older workflows. Not for review; actual device and audio not run.

@@ -1,6 +1,0 @@
-# V0.4d progression UI engineering slice
-
-Build --progress. Source-pinned extraction of NPC conditions/rewards, smith tree status and purchase, relic equip/refine, training actions, lore hooks, weapon equip. UI is native Canvas, simpler than original HTML; gameplay rules reused. Guard every action with current state, no new economy or currency. Test later NPC via controlled original hooks and currency fixtures (not organic playthrough). Haptics maps original duration pattern to native vibrateShort intensity, not hardware proof. All isolated progress-test saves. No release. Remaining: full ending and Boss victory/NG+/echo challenges, full map interaction/warp, original UI visual parity, gameplay and device performance.
-
-## V0.4.4 DevTools startup hotfix
-Real Windows DevTools 2.02.2609250 / lib 3.18.1 reported getter-only navigator at play-host.js:11. Do not replace navigator or fetch globals. Bind the bundled engine's free identifiers to private adapters using esbuild define. CI models getter-only, non-configurable globals, reproduces the old assignment failure, then executes actual packaged game and existing progression checks. Native globals must remain unchanged. Project-only and evidence artifacts are separate. Extract project-only ZIP and import its root. Real DevTools retest remains required; no release promotion or new gameplay work in this hotfix.

@@ -1,0 +1,40 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+const {loadTaffy}=require('./taffy-runtime.cjs');
+const {runLayoutCases}=require('./taffy-cases.cjs');
+const here=path.dirname(fileURLToPath(import.meta.url));
+const PIN='497de49c200daee81a18ce627bec98d5340ae57a';
+const [vendorArg,outArg]=process.argv.slice(2);
+if(!vendorArg||!outArg)throw Error('Usage: node taffy-build.mjs <pinned Taffy checkout> <new output directory>');
+const vendor=fs.realpathSync(vendorArg),out=path.resolve(outArg);
+const inside=(a,b)=>a===b||a.startsWith(b+path.sep);
+const realParent=fs.realpathSync(path.dirname(out));
+if(inside(path.join(realParent,path.basename(out)),vendor))throw Error('Output must not be inside vendor');
+function exec(cmd,args,cwd){const r=spawnSync(cmd,args,{cwd,encoding:'utf8',timeout:20*60*1000,maxBuffer:16*1024*1024});if(r.error)throw r.error;if(r.status!==0)throw Error(`${cmd} ${args.join(' ')}\n${r.stdout}\n${r.stderr}`);return r.stdout.trim();}
+const git=(...args)=>exec('git',args,vendor);
+const report={candidate:{version:'0.16.0',commit:PIN},host:'not-run',wx:'not-run',releaseReady:false};
+fs.mkdirSync(out,{recursive:false});
+try{
+  if(git('rev-parse','HEAD')!==PIN||git('status','--porcelain','--untracked-files=all')!=='')throw Error('Vendor must be exact clean pinned checkout');
+  const cargo=fs.readFileSync(path.join(vendor,'Cargo.toml'),'utf8');if(!/^version\s*=\s*"0\.16\.0"/m.test(cargo)||!/^license\s*=\s*"MIT"/m.test(cargo))throw Error('Vendor version/license mismatch');
+  const license=fs.readFileSync(path.join(vendor,'LICENSE'),'utf8');if(!/permission is hereby granted/i.test(license))throw Error('Vendor license invalid');
+  report.rust=exec('rustc',['+1.92.0','--version'],out);report.cargo=exec('cargo',['+1.92.0','--version'],out);
+  fs.mkdirSync(path.join(out,'src'));fs.copyFileSync(path.join(here,'taffy-bridge.rs'),path.join(out,'src/lib.rs'));
+  fs.writeFileSync(path.join(out,'Cargo.toml'),`[package]\nname = "h5publisher_taffy_layout"\nversion = "0.1.0"\nedition = "2021"\n[lib]\ncrate-type = ["cdylib"]\n[dependencies]\ntaffy = { path = ${JSON.stringify(vendor.replaceAll('\\','/'))}, default-features = false, features = ["std","taffy_tree","grid","flexbox","block_layout","parse"] }\n[profile.release]\nopt-level = "s"\nlto = true\ncodegen-units = 1\npanic = "abort"\n`);
+  exec('cargo',['+1.92.0','build','--release','--target','wasm32-unknown-unknown'],out);
+  const bytes=fs.readFileSync(path.join(out,'target/wasm32-unknown-unknown/release/h5publisher_taffy_layout.wasm'));
+  const mod=new WebAssembly.Module(bytes);if(WebAssembly.Module.imports(mod).length)throw Error('Expected import-free WASM');
+  report.wasm={bytes:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex')};
+  report.hostCases=runLayoutCases(await loadTaffy({mode:'host',bytes}));if(!report.hostCases.pass)throw Error('Host geometry failed');
+  if(git('rev-parse','HEAD')!==PIN||git('status','--porcelain','--untracked-files=all')!=='')throw Error('Vendor integrity failed after build');
+  const project=path.join(out,'wx-project');fs.mkdirSync(project);fs.writeFileSync(path.join(project,'taffy-layout.wasm'),bytes);fs.writeFileSync(path.join(project,'taffy-MIT.txt'),license);
+  for(const file of ['taffy-runtime','taffy-cases'])fs.copyFileSync(path.join(here,file+'.cjs'),path.join(project,file+'.js'));
+  fs.writeFileSync(path.join(project,'game.js'),`const {loadTaffy}=require('./taffy-runtime.js');const {runLayoutCases}=require('./taffy-cases.js');const canvas=wx.createCanvas(),ctx=canvas.getContext('2d');const state=globalThis.__H5PUBLISHER_TAFFY_ABI__={phase:'loading',releaseReady:false};function paint(){ctx.fillStyle=state.phase==='pass'?'#185b3a':'#513039';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.fillStyle='white';ctx.font='16px sans-serif';ctx.fillText('Taffy ABI: '+state.phase,10,30);}paint();loadTaffy({mode:'wx'}).then(b=>{const result=runLayoutCases(b);Object.assign(state,result,{runtime:'wx',phase:result.pass?'pass':'fail'});console.log(JSON.stringify(state));paint();}).catch(e=>{Object.assign(state,{phase:'error',error:String(e)});console.error(JSON.stringify(state));paint();});`);
+  fs.writeFileSync(path.join(project,'game.json'),JSON.stringify({deviceOrientation:'landscape'}));fs.writeFileSync(path.join(project,'project.config.json'),JSON.stringify({appid:'touristappid',compileType:'game',projectname:'taffy-abi-NOT-RELEASE',miniprogramRoot:'./',setting:{es6:true,minified:false}}));
+  report.host='pass';report.project='wx-project';
+}catch(e){report.host='fail';report.error=String(e.stack||e);process.exitCode=1;}finally{fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));}
