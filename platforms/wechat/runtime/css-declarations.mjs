@@ -4,7 +4,7 @@ const extras=[
   'height','min-height','max-height','justify-content','flex-wrap','flex-grow','flex-shrink','flex-basis',
   'font-family','font-size','font-weight','line-height','letter-spacing','text-align','text-transform',
   'opacity','visibility','pointer-events','overflow-x','overflow-y','background','background-color','color',
-  'border-radius','z-index','transform','top','bottom'
+  'border-radius','z-index','transform','transform-origin','white-space','grid-column','grid-row','top','bottom'
 ];
 export const runtimeProperties=new Set([...boxProperties,...extras]);
 
