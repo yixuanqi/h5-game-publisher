@@ -1,7 +1,7 @@
 function add(map,feature,rule,decl){
-  if(!map.has(feature))map.set(feature,[]);
-  const rows=map.get(feature);
-  if(rows.length<20)rows.push({selector:rule.selector,media:rule.media??[],property:decl.prop,value:decl.value});
+  if(!map.has(feature))map.set(feature,{count:0,examples:[]});
+  const item=map.get(feature);item.count++;
+  if(item.examples.length<20)item.examples.push({selector:rule.selector,media:rule.media??[],property:decl.prop,value:decl.value});
 }
 function nonZeroMinmax(value){
   for(const m of String(value).matchAll(/minmax\(\s*([^,]+),/g)){
@@ -32,11 +32,11 @@ export function analyzeLayoutRequirements(plan){
       if(prop==='flex-wrap'&&value!=='nowrap')add(found,'flexWrap',rule,d);
     }
   }
-  const features=Object.fromEntries([...found].map(([k,v])=>[k,{count:v.length,examples:v}]));
+  const features=Object.fromEntries(found);
   return {
     schema:1,
     features,
-    requiresFullGrid:Boolean(found.get('gridNonzeroMinmax')?.length||found.get('gridAutoRepeat')?.length),
+    requiresFullGrid:Boolean(found.get('gridNonzeroMinmax')?.count||found.get('gridAutoRepeat')?.count),
     featureNames:[...found.keys()].sort()
   };
 }
