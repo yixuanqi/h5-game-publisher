@@ -5,7 +5,9 @@ const env={width:844,height:390};
 test('nested CSS expressions and shorthand preserve function tokens',()=>{
   assert.deepEqual(splitTop('4px clamp(14px, 3.2%, 32px)'),['4px','clamp(14px, 3.2%, 32px)']);
   assert.equal(length('min(760px, 94%)',790,env),742.6);
-  assert.equal(length('clamp(14px, 3.2%, 32px)',844,env),27.008);
+  assert.ok(Math.abs(length('clamp(14px, 3.2%, 32px)',844,env)-27.008)<1e-9,'Fractional CSS lengths are compared within floating-point tolerance');
+  assert.equal(length('clamp(14px, 3.2%, 32px)',320,env),14);
+  assert.equal(length('clamp(14px, 3.2%, 32px)',1200,env),32);
   assert.equal(length('100vw',10,env),844);
   assert.throws(()=>length('calc(1px + 2px)',100,env),/Unsupported/);
   assert.deepEqual(expandBox('padding','8px 10px 4px'),[['padding-top','8px'],['padding-right','10px'],['padding-bottom','4px'],['padding-left','10px']]);
