@@ -107,7 +107,7 @@ export function startOriginalEntry(wx,loadEngine,html,host=globalThis){
           if(disposed||state.phase==='ERROR'||state.phase==='FIRST_FRAME'||state.phase==='BOOT_TIMEOUT'){resolve(state);return;}
           inspect();
           if(state.phase==='FIRST_FRAME'||state.phase==='BOOT_TIMEOUT'||state.phase==='ERROR'){resolve(state);return;}
-          timers.set(wait,55);
+          timer=timers.set(wait,55);
         }
         wait();
       });
