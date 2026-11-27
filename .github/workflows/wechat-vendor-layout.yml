@@ -7,6 +7,7 @@ on:
       - 'tests/wechat-vendor-layout.test.mjs'
       - 'tests/wechat-float-pigment.test.mjs'
       - 'tests/wechat-float-pigment-runtime.test.mjs'
+      - 'tests/wechat-float-pigment-source-style.test.mjs'
       - '.github/workflows/wechat-vendor-layout.yml'
   workflow_dispatch:
 permissions:
@@ -22,7 +23,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test tests/wechat-vendor-layout.test.mjs tests/wechat-float-pigment.test.mjs tests/wechat-float-pigment-runtime.test.mjs
+      - run: node --test tests/wechat-vendor-layout.test.mjs tests/wechat-float-pigment.test.mjs tests/wechat-float-pigment-runtime.test.mjs tests/wechat-float-pigment-source-style.test.mjs
       - uses: actions/checkout@v4
         with:
           repository: yixuanqi/PhotoGallery

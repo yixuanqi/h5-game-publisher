@@ -8,6 +8,7 @@ import {snapshot,assertSnapshot,assertDisjoint,gitBlob} from '../../../scripts/s
 import {FLOAT_PIGMENT,classifyFloatPigmentProbe} from './vendor-pins.mjs';
 import {buildFloatPigmentWasm} from '../runtime/float-pigment-build.mjs';
 import {writeWxWasmFixture} from './wx-wasm-fixture.mjs';
+import {evaluateFrozenSaveSlotsGrid} from './float-pigment-source-grid.mjs';
 const {instantiatePackagedWasm,createFloatPigmentBackend}=createRequire(import.meta.url)('../runtime/float-pigment-runtime.cjs');
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..');
@@ -37,6 +38,7 @@ try{
   for(const child of children){fp.setHeight(child,20);fp.appendChild(rootNode,child);}fp.calculate(rootNode,{width:300,height:100,maxWidth:300,maxHeight:100});
   const actualX=fp.rect(children[1]).x,expectedX=103,delta=Math.abs(actualX-expectedX);report.wasmGrid={width:300,gap:9,expectedSecondX:expectedX,actualSecondX:actualX,delta};assert.ok(delta<=0.05,`Grid mismatch: expected ${expectedX}, got ${actualX}`);report.wasmGridExecutionPass=true;
   for(const child of children)fp.freeNode(child);fp.freeNode(rootNode);
+  report.sourceGrid=await evaluateFrozenSaveSlotsGrid({source,backend:fp,evidenceDir:evidence});assert.equal(report.sourceGrid.pass,true,'Frozen dynamic save-slot Grid parity failed');
   report.fixture=writeWxWasmFixture({wasmPath,vendor,outDir:path.join(evidence,'wx-wasm-fixture')});
   report.decision=classifyFloatPigmentProbe(report);assert.equal(report.decision,'host-wasm-proven-wx-pending');report.result='runtime-backend-host-proven';
 }catch(e){report.error=String(e.stack||e);report.wasmBuildPass??=false;report.wasmGridExecutionPass??=false;report.decision=classifyFloatPigmentProbe(report);console.error(report.error);process.exitCode=1;}finally{
