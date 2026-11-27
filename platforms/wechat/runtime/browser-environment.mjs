@@ -2,6 +2,8 @@ import {createNavigatorFromWx} from './navigator-bridge.mjs';
 import {createPerformanceBridge} from './performance-bridge.mjs';
 import {createFrameScheduler} from './frame-scheduler.mjs';
 import {installViewportBridge} from './viewport-bridge.mjs';
+import {createLocalStorageFacade} from './local-storage-facade.mjs';
+import {createLocationBridge} from './location-bridge.mjs';
 
 function installValue(target,name,value){
   try{Object.defineProperty(target,name,{configurable:true,writable:false,value});return;}
@@ -10,19 +12,24 @@ function installValue(target,name,value){
   throw Error('Unable to install window.'+name);
 }
 
-export function createBrowserEnvironment({wx,window,canvas,host=globalThis,fetch}={}){
+export function createBrowserEnvironment({wx,window,canvas,host=globalThis,fetch,storage}={}){
   if(!wx||typeof wx!=='object')throw Error('wx runtime required');
   if(!window||typeof window!=='object'||!window.document)throw Error('DOM window/document required');
   if(typeof fetch!=='function')throw Error('Packaged fetch adapter required');
+  if(!storage)throw Error('Native storage adapter required');
   let viewport;
   try{
     viewport=installViewportBridge(window,wx);
     const navigator=createNavigatorFromWx(wx);
     const performance=createPerformanceBridge(wx);
     const frame=createFrameScheduler(canvas,performance,host);
+    const localStorage=createLocalStorageFacade(storage);
+    const location=createLocationBridge();
     installValue(window,'navigator',navigator);
     installValue(window,'performance',performance);
     installValue(window,'fetch',fetch);
+    installValue(window,'localStorage',localStorage);
+    installValue(window,'location',location);
     installValue(window,'requestAnimationFrame',frame.requestAnimationFrame);
     installValue(window,'cancelAnimationFrame',frame.cancelAnimationFrame);
     return Object.freeze({
@@ -31,6 +38,8 @@ export function createBrowserEnvironment({wx,window,canvas,host=globalThis,fetch
       navigator,
       performance,
       fetch,
+      localStorage,
+      location,
       requestAnimationFrame:frame.requestAnimationFrame,
       cancelAnimationFrame:frame.cancelAnimationFrame,
       viewport,
