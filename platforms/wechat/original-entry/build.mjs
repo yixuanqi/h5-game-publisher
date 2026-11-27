@@ -8,6 +8,7 @@ import {build as bundle} from 'esbuild';
 import {exportGame} from '../../../scripts/import-blog.mjs';
 import {buildFloatPigmentWasm} from '../runtime/float-pigment-build.mjs';
 import {compileRuntimeCssPlan} from './css-plan-build.mjs';
+import {analyzeLayoutRequirements,assessLayoutBackend,FLOAT_PIGMENT_0105_CAPABILITIES,TAFFY_0160_DECLARED_CAPABILITIES} from './layout-requirements.mjs';
 import {snapshot,assertSnapshot,assertDisjoint,digestManifest,gitBlob} from '../../../scripts/source-integrity.mjs';
 
 const here=path.dirname(fileURLToPath(import.meta.url));
@@ -44,6 +45,12 @@ try{
   const html=fs.readFileSync(path.join(raw,'index.html'),'utf8');
   const css=fs.readFileSync(path.join(raw,'styles.css'),'utf8');
   const layoutPlan=compileRuntimeCssPlan(css);
+  const layoutRequirements=analyzeLayoutRequirements(layoutPlan);
+  const layoutBackends={
+    floatPigment0105:{...assessLayoutBackend(layoutRequirements,FLOAT_PIGMENT_0105_CAPABILITIES),status:'host-wasm-proven-wx-pending'},
+    taffy0160:{...assessLayoutBackend(layoutRequirements,TAFFY_0160_DECLARED_CAPABILITIES),status:'declared-compatible-executable-pending'}
+  };
+  const layoutContract={...layoutRequirements,backends:layoutBackends};
 
   const scripts=[...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)].map(m=>({attrs:m[1].trim(),body:m[2]}));
   const inline=scripts.filter(x=>!/\bsrc\s*=/.test(x.attrs));
@@ -55,6 +62,7 @@ try{
   const floatPigment=buildFloatPigmentWasm({vendor,workDir:path.join(work,'float-pigment-build'),outFile:path.join(project,'float-pigment-layout.wasm')});
   fs.writeFileSync(path.join(project,'source-styles.css'),css);
   writeJson(path.join(project,'layout-plan.json'),layoutPlan);
+  writeJson(path.join(project,'layout-requirements.json'),layoutContract);
   fs.writeFileSync(path.join(project,'html.js'),"'use strict';\nmodule.exports="+JSON.stringify(html)+";\n");
 
   const require=createRequire(import.meta.url),linkedomPkg=require('linkedom/package.json');
@@ -116,7 +124,8 @@ try{
     "'use strict';",
     "const html=require('./html.js');",
     "const layoutPlan=require('./layout-plan.json');",
-    "module.exports=require('./host.js').startOriginalEntry(wx,()=>require('./engine.js'),html,layoutPlan,globalThis);",
+    "const layoutRequirements=require('./layout-requirements.json');",
+    "module.exports=require('./host.js').startOriginalEntry(wx,()=>require('./engine.js'),html,layoutPlan,layoutRequirements,globalThis);",
     ''
   ].join('\n'));
 
@@ -158,6 +167,7 @@ try{
     originalHtml:{sha256:sha256(html),bytes:Buffer.byteLength(html)},
     originalCss:{sha256:sha256(css),bytes:Buffer.byteLength(css),packagedAs:'source-styles.css'},
     layoutPlan:{schema:layoutPlan.schema,rules:layoutPlan.rules.length,maxOrder:layoutPlan.maxOrder,skippedPseudoElements:layoutPlan.skippedPseudoElements.length,sha256:sha256(JSON.stringify(layoutPlan))},
+    layoutRequirements:layoutContract,
     inlineScripts:[{sha256:sha256(inline[0].body),bytes:Buffer.byteLength(inline[0].body),policy:'browser startup/network diagnostic intentionally not executed in Mini Game host'}],
     moduleEntry:'./src/main.js?v=46.1.0',
     linkedom:{version:linkedomPkg.version,license:linkedomPkg.license,entry:'linkedom/worker'},
@@ -178,7 +188,10 @@ try{
     releaseReady:false,
     expectedStateGlobal:'module.exports.state',
     successPhase:'FIRST_FRAME',
-    requiredLayoutBackend:'float-pigment',
+    currentLayoutBackend:'float-pigment-0.10.5-partial',
+    requiredLayoutFeatures:layoutRequirements.featureNames,
+    floatPigmentMissing:layoutBackends.floatPigment0105.missing,
+    taffyGate:'0.5.2g-executable-pending',
     requiredWasmRuntime:'WXWebAssembly',
     blockersAreEvidence:true
   });
