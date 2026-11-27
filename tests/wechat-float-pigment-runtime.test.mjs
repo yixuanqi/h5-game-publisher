@@ -45,3 +45,55 @@ test('WXWebAssembly fixture is a standalone non-release Mini Game project',()=>{
   const cfg=JSON.parse(fs.readFileSync(path.join(out,'project.config.json'),'utf8'));assert.equal(cfg.compileType,'game');assert.equal(cfg.appid,'touristappid');
   fs.rmSync(tmp,{recursive:true,force:true});
 });
+
+
+test('additive DOM box ABI serializes flex sizing, box edges, positioning and fails closed when capability is absent',()=>{
+  const memory={buffer:new ArrayBuffer(4096)},calls=[],base={
+    memory,FpAbiVersion:()=>1,FpNodeNew:()=>1,FpNodeFree(){},FpNodeAppend(){return 1},
+    FpNodeSetDisplay(){return 1},FpNodeSetWidth(){return 1},FpNodeSetHeight(){return 1},FpNodeSetGap(){return 1},
+    FpNodeSetFlexDirection(){return 1},FpNodeSetJustifyContent(){return 1},FpNodeSetAlignItems(){return 1},
+    FpGridTracksAlloc:()=>128,FpGridTracksFree(){},FpNodeSetGridTemplateColumns(){return 1},FpNodeSetGridTemplateRows(){return 1},
+    FpNodeCalculate(){return 1},FpNodeLeft:()=>0,FpNodeTop:()=>0,FpNodeWidth:()=>0,FpNodeHeight:()=>0
+  };
+  const extra={
+    FpNodeSetMinWidth:(...a)=>(calls.push(['minw',...a]),1),
+    FpNodeSetMinHeight:(...a)=>(calls.push(['minh',...a]),1),
+    FpNodeSetMaxWidth:(...a)=>(calls.push(['maxw',...a]),1),
+    FpNodeSetMaxHeight:(...a)=>(calls.push(['maxh',...a]),1),
+    FpNodeSetBoxSizing:(...a)=>(calls.push(['box',...a]),1),
+    FpNodeSetPadding:(...a)=>(calls.push(['pad',...a]),1),
+    FpNodeSetMargin:(...a)=>(calls.push(['margin',...a]),1),
+    FpNodeSetBorder:(...a)=>(calls.push(['border',...a]),1),
+    FpNodeSetPosition:(...a)=>(calls.push(['position',...a]),1),
+    FpNodeSetInset:(...a)=>(calls.push(['inset',...a]),1),
+    FpNodeSetFlexGrow:(...a)=>(calls.push(['grow',...a]),1),
+    FpNodeSetFlexShrink:(...a)=>(calls.push(['shrink',...a]),1),
+    FpNodeSetFlexBasis:(...a)=>(calls.push(['basis',...a]),1),
+    FpNodeSetFlexWrap:(...a)=>(calls.push(['wrap',...a]),1),
+    FpNodeSetAlignSelf:(...a)=>(calls.push(['self',...a]),1)
+  };
+  const fp=createFloatPigmentBackend({exports:{...base,...extra}});
+  fp.setMinWidth(1,{unit:'percent',value:.5});fp.setMinHeight(1,36);fp.setMaxWidth(1,500);fp.setMaxHeight(1,{unit:'undefined'});
+  fp.setBoxSizing(1,'border-box');
+  fp.setPadding(1,{top:10,right:20,bottom:30,left:40});
+  fp.setMargin(1,{top:{unit:'auto'},right:2,bottom:3,left:4});
+  fp.setBorder(1,{top:1,right:2,bottom:3,left:4});
+  fp.setPosition(1,'absolute');fp.setInset(1,{top:10,left:{unit:'percent',value:.5}});
+  fp.setFlexGrow(1,1);fp.setFlexShrink(1,0);fp.setFlexBasis(1,{unit:'percent',value:0});
+  fp.setFlexWrap(1,'wrap');fp.setAlignSelf(1,'flex-end');
+
+  assert.ok(calls.some(x=>x[0]==='minw'&&x[2]===2&&x[3]===.5));
+  assert.deepEqual(calls.filter(x=>x[0]==='pad').map(x=>x.slice(2)),[[0,1,10],[1,1,20],[2,1,30],[3,1,40]]);
+  assert.ok(calls.some(x=>x[0]==='margin'&&x[2]===0&&x[3]===0));
+  assert.deepEqual(calls.find(x=>x[0]==='box').slice(1),[1,2]);
+  assert.deepEqual(calls.find(x=>x[0]==='position').slice(1),[1,2]);
+  assert.ok(calls.some(x=>x[0]==='inset'&&x[2]===1&&x[3]===3&&x[4]===0),'unspecified inset uses undefined length');
+  assert.deepEqual(calls.find(x=>x[0]==='grow').slice(1),[1,1]);
+  assert.deepEqual(calls.find(x=>x[0]==='wrap').slice(1),[1,1]);
+  assert.deepEqual(calls.find(x=>x[0]==='self').slice(1),[1,9]);
+
+  const legacy=createFloatPigmentBackend({exports:base});
+  assert.throws(()=>legacy.setPadding(1,{top:1}),/Missing float-pigment DOM ABI export/);
+  assert.throws(()=>fp.setFlexGrow(1,-1),/non-negative/);
+  assert.throws(()=>fp.setPosition(1,'potato'),/Unsupported position/);
+});
