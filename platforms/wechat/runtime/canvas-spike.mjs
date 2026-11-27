@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
+import {createRequire} from 'node:module';
 import {parseHTML} from 'linkedom';
 import {createCanvas} from '@napi-rs/canvas';
 import {build} from 'esbuild';
@@ -11,6 +12,7 @@ import {exportGame} from '../../../scripts/import-blog.mjs';
 import {snapshot,assertSnapshot,assertDisjoint,gitBlob,sha256} from '../../../scripts/source-integrity.mjs';
 import {installCanvasBridge} from './canvas-bridge.mjs';
 import {createNavigatorBridge} from './navigator-bridge.mjs';
+const {createLocalFetch}=createRequire(import.meta.url)('../bootstrap/runtime.cjs');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..');
 const spec=JSON.parse(fs.readFileSync(path.join(root,'platforms/wechat/bootstrap/compatibility.json'),'utf8'));
 const checkout=fs.realpathSync(process.argv[2]||'upstream'),source=path.join(checkout,'docs',spec.game);
@@ -24,7 +26,7 @@ const before=snapshot(source);
 fs.mkdirSync(out,{recursive:true});
 const report={stage:'0.5.2b-canvas-spike',sourceSha:spec.sourceSha,framework:git(root,'rev-parse','HEAD'),result:'fail',backend:'Skia / Node diagnostic',officialDevTools:'not-run',gameplayParity:'not-run',releaseReady:false};
 let rawBefore;
-async function attempt(code,html,{canvas=false,navigator=false,timers=false}={}){
+async function attempt(code,html,{canvas=false,navigator=false,timers=false,packagedFetch=false}={}){
   const {window,document}=parseHTML(html);
   const bridge=canvas?installCanvasBridge(document,(w,h)=>createCanvas(w,h)):null;
   const nav=navigator?createNavigatorBridge({platform:'android',system:'Android 14',language:'zh_CN',wechatVersion:'8.0'}):undefined;
@@ -32,13 +34,14 @@ async function attempt(code,html,{canvas=false,navigator=false,timers=false}={})
     try{Object.defineProperty(window,'navigator',{configurable:true,value:nav});}
     catch{try{window.navigator=nav;}catch{}}
   }
+  const fetchLocal=packagedFetch?createLocalFetch({getFileSystemManager:()=>({readFileSync(name,enc){return fs.readFileSync(path.join(raw,name),enc);}})}):undefined;
   const observed=[];
   const observedConsole={
     log:(...args)=>observed.push({level:'log',text:args.map(String).join(' ')}),
     warn:(...args)=>observed.push({level:'warn',text:args.map(String).join(' ')}),
     error:(...args)=>observed.push({level:'error',text:args.map(String).join(' ')})
   };
-  const context=vm.createContext({window,document,console:observedConsole,...(nav?{navigator:nav}:{}),...(timers?{setTimeout,clearTimeout}:{})});
+  const context=vm.createContext({window,document,console:observedConsole,...(nav?{navigator:nav}:{}),...(timers?{setTimeout,clearTimeout}:{}),...(fetchLocal?{fetch:fetchLocal}:{})});
   let outcome;
   try{vm.runInContext(code,context,{timeout:5000,filename:'original-main.bundle.js'});outcome={status:'returned-sync'};}
   catch(e){outcome={status:'blocked',error:String(e),stack:String(e.stack).split('\n').slice(0,14)};}
@@ -46,7 +49,7 @@ async function attempt(code,html,{canvas=false,navigator=false,timers=false}={})
   await Promise.resolve();await Promise.resolve();
   // Frozen NG1 loader retries the primary manifest (450+900 ms) and then
   // the legacy fallback (450+900 ms). This is observation time only.
-  await new Promise(resolve=>setTimeout(resolve,timers?2900:0));
+  await new Promise(resolve=>setTimeout(resolve,packagedFetch?80:timers?2900:0));
   await Promise.resolve();
   const asyncErrors=observed.filter(x=>x.level==='error');
   const bootVerified=window.__ABV_BOOTED__===true;
@@ -68,9 +71,12 @@ try{
   assert.ok(report.navigatorOnly.stats.contexts>0&&report.navigatorOnly.stats.radialGradients>0,'Navigator slice lost native Canvas progress');
   assert.equal(report.navigatorOnly.navigator.serviceWorker,false,'Mini Game navigator must not advertise ServiceWorker');
   assert.match(JSON.stringify(report.navigatorOnly.asyncErrors),/setTimeout is not defined/,'Expected timer Red blocker changed; inspect before adapting');
-  report.green=await attempt(code,html,{canvas:true,navigator:true,timers:true});
-  assert.ok(report.green.stats.contexts>0&&report.green.stats.radialGradients>0,'Timer slice lost native Canvas progress');
-  assert.doesNotMatch(JSON.stringify(report.green.asyncErrors),/setTimeout is not defined/,'Timer blocker persists');
+  report.timerOnly=await attempt(code,html,{canvas:true,navigator:true,timers:true});
+  assert.ok(report.timerOnly.stats.contexts>0&&report.timerOnly.stats.radialGradients>0,'Timer slice lost native Canvas progress');
+  assert.match(JSON.stringify(report.timerOnly.asyncErrors),/fetch is not defined/,'Expected packaged fetch Red blocker changed; inspect before adapting');
+  report.green=await attempt(code,html,{canvas:true,navigator:true,timers:true,packagedFetch:true});
+  assert.ok(report.green.stats.contexts>0&&report.green.stats.radialGradients>0,'Packaged fetch slice lost native Canvas progress');
+  assert.doesNotMatch(JSON.stringify(report.green.asyncErrors),/fetch is not defined/,'Packaged fetch blocker persists');
   assert.ok(report.green.bootVerified||report.green.asyncErrors.length>0,'Async bootstrap produced neither boot evidence nor an observable blocker');
   // Independent native raster evidence, not a screenshot of the game or a visual parity result.
   const {document}=parseHTML('<html><body><canvas id="screen" width="32" height="32"></canvas></body></html>');
