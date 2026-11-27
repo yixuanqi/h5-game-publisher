@@ -6,6 +6,12 @@ const DISPLAY=Object.freeze({none:0,block:1,flex:2,grid:3});
 const FLEX_DIRECTION=Object.freeze({row:0,'row-reverse':1,column:2,'column-reverse':3});
 const JUSTIFY=Object.freeze({center:0,'flex-start':1,'flex-end':2,'space-between':3,'space-around':4,'space-evenly':5,start:6,end:7,left:8,right:9,stretch:10,baseline:11,normal:12});
 const ALIGN=Object.freeze({stretch:0,normal:1,center:2,start:3,end:4,'flex-start':5,'flex-end':6,'self-start':7,'self-end':8,baseline:9});
+const ALIGN_SELF=Object.freeze({auto:0,normal:1,stretch:2,center:3,start:4,end:5,'self-start':6,'self-end':7,'flex-start':8,'flex-end':9,baseline:10});
+const FLEX_WRAP=Object.freeze({nowrap:0,wrap:1,'wrap-reverse':2});
+const BOX_SIZING=Object.freeze({'content-box':0,'padding-box':1,'border-box':2});
+const POSITION=Object.freeze({static:0,relative:1,absolute:2,fixed:3,sticky:4});
+const SIDE=Object.freeze({top:0,right:1,bottom:2,left:3});
+const UNDEFINED_LENGTH=Object.freeze({unit:'undefined'});
 function packagedPath(path){
   if(typeof path!=='string'||!path||path.startsWith('/')||path.includes('\\')||path.includes('?')||path.includes('#')||path.split('/').some(x=>x===''||x==='.'||x==='..')||!/\.wasm(?:\.br)?$/.test(path))throw Error('Invalid packaged WASM path: '+path);
   return path;
@@ -44,6 +50,21 @@ function createFloatPigmentBackend(instance){
   if(e.FpAbiVersion()!==ABI_VERSION)throw Error('Unsupported float-pigment ABI version: '+e.FpAbiVersion());
   function node(v){if(!Number.isInteger(v)||v<=0)throw Error('Invalid node handle');return v;}
   function accepted(name,value){if(value!==1)throw Error(name+' rejected input');}
+  function domExport(name){
+    const fn=e[name];
+    if(typeof fn!=='function')throw Error('Missing float-pigment DOM ABI export: '+name);
+    return fn;
+  }
+  function setLengthExport(name,label,h,v){
+    const [u,n]=lengthValue(v);accepted(label,domExport(name)(node(h),u,n));
+  }
+  function setSides(name,label,h,values,defaults){
+    const fn=domExport(name);h=node(h);values=values||{};
+    for(const side of ['top','right','bottom','left']){
+      const value=values[side]===undefined?defaults:values[side];
+      const [u,n]=lengthValue(value);accepted(label+' '+side,fn(h,SIDE[side],u,n));
+    }
+  }
   function setTracks(handle,tracks,fn){
     node(handle);if(!Array.isArray(tracks)||tracks.length<1)throw Error('Grid tracks required');
     const ptr=e.FpGridTracksAlloc(tracks.length*2);if(!Number.isInteger(ptr)||ptr<=0)throw Error('Track allocation failed');
@@ -61,8 +82,23 @@ function createFloatPigmentBackend(instance){
     setDisplay(h,v){accepted('display',e.FpNodeSetDisplay(node(h),enumValue('display',DISPLAY,v)));},
     setWidth(h,v){const [u,n]=lengthValue(v);accepted('width',e.FpNodeSetWidth(node(h),u,n));},
     setHeight(h,v){const [u,n]=lengthValue(v);accepted('height',e.FpNodeSetHeight(node(h),u,n));},
+    setMinWidth(h,v){setLengthExport('FpNodeSetMinWidth','min-width',h,v);},
+    setMinHeight(h,v){setLengthExport('FpNodeSetMinHeight','min-height',h,v);},
+    setMaxWidth(h,v){setLengthExport('FpNodeSetMaxWidth','max-width',h,v);},
+    setMaxHeight(h,v){setLengthExport('FpNodeSetMaxHeight','max-height',h,v);},
+    setBoxSizing(h,v){accepted('box-sizing',domExport('FpNodeSetBoxSizing')(node(h),enumValue('box-sizing',BOX_SIZING,v)));},
+    setPadding(h,v){setSides('FpNodeSetPadding','padding',h,v,0);},
+    setMargin(h,v){setSides('FpNodeSetMargin','margin',h,v,0);},
+    setBorder(h,v){setSides('FpNodeSetBorder','border',h,v,0);},
+    setPosition(h,v){accepted('position',domExport('FpNodeSetPosition')(node(h),enumValue('position',POSITION,v)));},
+    setInset(h,v){setSides('FpNodeSetInset','inset',h,v,UNDEFINED_LENGTH);},
     setGap(h,{row=0,column=0}={}){const [ru,rv]=lengthValue(row),[cu,cv]=lengthValue(column);accepted('row gap',e.FpNodeSetGap(node(h),0,ru,rv));accepted('column gap',e.FpNodeSetGap(node(h),1,cu,cv));},
     setFlexDirection(h,v){accepted('flex-direction',e.FpNodeSetFlexDirection(node(h),enumValue('flex-direction',FLEX_DIRECTION,v)));},
+    setFlexGrow(h,v){v=finite('flex-grow',v);if(v<0)throw Error('flex-grow must be non-negative');accepted('flex-grow',domExport('FpNodeSetFlexGrow')(node(h),v));},
+    setFlexShrink(h,v){v=finite('flex-shrink',v);if(v<0)throw Error('flex-shrink must be non-negative');accepted('flex-shrink',domExport('FpNodeSetFlexShrink')(node(h),v));},
+    setFlexBasis(h,v){setLengthExport('FpNodeSetFlexBasis','flex-basis',h,v);},
+    setFlexWrap(h,v){accepted('flex-wrap',domExport('FpNodeSetFlexWrap')(node(h),enumValue('flex-wrap',FLEX_WRAP,v)));},
+    setAlignSelf(h,v){accepted('align-self',domExport('FpNodeSetAlignSelf')(node(h),enumValue('align-self',ALIGN_SELF,v)));},
     setJustifyContent(h,v){accepted('justify-content',e.FpNodeSetJustifyContent(node(h),enumValue('justify-content',JUSTIFY,v)));},
     setAlignItems(h,v){accepted('align-items',e.FpNodeSetAlignItems(node(h),enumValue('align-items',ALIGN,v)));},
     setGridTemplateColumns(h,tracks){setTracks(h,tracks,e.FpNodeSetGridTemplateColumns);},
