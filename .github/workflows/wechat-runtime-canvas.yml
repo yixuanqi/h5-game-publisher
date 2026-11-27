@@ -28,7 +28,7 @@ jobs:
           path: upstream
           sparse-checkout: docs/ashen-bell-vow
           persist-credentials: false
-      - run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund esbuild@0.25.12 linkedom@0.18.12 @napi-rs/canvas@0.1.80
+      - run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund esbuild@0.25.12 linkedom@0.18.15 @napi-rs/canvas@0.1.80
       - run: node platforms/wechat/runtime/canvas-spike.mjs upstream
       - uses: actions/upload-artifact@v4
         if: always()
