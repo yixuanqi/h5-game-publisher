@@ -28,6 +28,7 @@ async function instantiatePackagedWasm({host=globalThis,path,bytes,imports={}}={
   return {runtime:'standard',instance};
 }
 function finite(name,v){v=Number(v);if(!Number.isFinite(v))throw Error(name+' must be finite');return v;}
+function available(name,v){v=Number(v);if(Number.isFinite(v)||v===Infinity)return v;throw Error(name+' must be finite or +Infinity');}
 function enumValue(name,map,value){if(!Object.hasOwn(map,value))throw Error('Unsupported '+name+': '+value);return map[value];}
 function lengthValue(value){
   if(typeof value==='number')return [LENGTH.px,finite('length',value)];
@@ -66,7 +67,7 @@ function createFloatPigmentBackend(instance){
     setAlignItems(h,v){accepted('align-items',e.FpNodeSetAlignItems(node(h),enumValue('align-items',ALIGN,v)));},
     setGridTemplateColumns(h,tracks){setTracks(h,tracks,e.FpNodeSetGridTemplateColumns);},
     setGridTemplateRows(h,tracks){setTracks(h,tracks,e.FpNodeSetGridTemplateRows);},
-    calculate(h,{width,height,maxWidth=width,maxHeight=height}){for(const [n,v] of Object.entries({width,height,maxWidth,maxHeight}))finite(n,v);accepted('calculate',e.FpNodeCalculate(node(h),width,height,maxWidth,maxHeight));},
+    calculate(h,{width,height,maxWidth=width,maxHeight=height}){width=available('width',width);height=available('height',height);maxWidth=finite('maxWidth',maxWidth);maxHeight=finite('maxHeight',maxHeight);accepted('calculate',e.FpNodeCalculate(node(h),width,height,maxWidth,maxHeight));},
     rect(h){h=node(h);return {x:e.FpNodeLeft(h),y:e.FpNodeTop(h),width:e.FpNodeWidth(h),height:e.FpNodeHeight(h)};}
   });
 }

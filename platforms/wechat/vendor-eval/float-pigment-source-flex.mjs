@@ -42,7 +42,7 @@ function buildIntrinsicFlex({backend,ctx,resolveFamily,tree,contentWidth,env}){
     return record;
   }
   const root=build(tree,{root:true});
-  backend.calculate(root.handle,{width:contentWidth,height:env.height,maxWidth:contentWidth,maxHeight:env.height});
+  backend.calculate(root.handle,{width:contentWidth,height:Infinity,maxWidth:contentWidth,maxHeight:env.height});
   const rootRect=backend.rect(root.handle);
   function flatten(record,ox=0,oy=0){
     const r=backend.rect(record.handle),x=ox+r.x,y=oy+r.y;

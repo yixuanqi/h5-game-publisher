@@ -152,7 +152,9 @@ pub unsafe extern "C" fn FpNodeSetGridTemplateRows(node: *mut Node, ptr: *const 
 
 #[no_mangle]
 pub unsafe extern "C" fn FpNodeCalculate(node: *mut Node, width: f32, height: f32, max_width: f32, max_height: f32) -> u32 {
-    if node.is_null() || !width.is_finite() || !height.is_finite() || !max_width.is_finite() || !max_height.is_finite() { return 0; }
+    let available = |v: f32| v.is_finite() || v == f32::INFINITY;
+    if node.is_null() || !available(width) || !available(height) || !max_width.is_finite() || !max_height.is_finite() { return 0; }
+    // Upstream NodeCalculateLayout intentionally maps non-finite available size to OptionNum::none().
     NodeCalculateLayout(node.cast(), width, height, max_width, max_height); 1
 }
 

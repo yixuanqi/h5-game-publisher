@@ -24,10 +24,12 @@ test('standard WebAssembly path is host-test-only and requires bytes',async()=>{
 });
 
 test('float-pigment ABI validates exports and serializes generic grid tracks',()=>{
-  const memory={buffer:new ArrayBuffer(2048)};let ptr=128,next=1,freed=0,columns,display,width,gaps=[];
-  const e={memory,FpAbiVersion:()=>1,FpNodeNew:()=>next++,FpNodeFree(){},FpNodeAppend(){return 1},FpNodeSetDisplay(h,v){display=v;return 1},FpNodeSetWidth(h,u,v){width=[u,v];return 1},FpNodeSetHeight(){return 1},FpNodeSetGap(h,a,u,v){gaps.push([a,u,v]);return 1},FpNodeSetFlexDirection(){return 1},FpNodeSetJustifyContent(){return 1},FpNodeSetAlignItems(){return 1},FpGridTracksAlloc:()=>ptr,FpGridTracksFree:()=>freed++,FpNodeSetGridTemplateColumns(h,p,n){columns=[...new Float32Array(memory.buffer,p,n*2)];return 1},FpNodeSetGridTemplateRows(){return 1},FpNodeCalculate(){return 1},FpNodeLeft:()=>1,FpNodeTop:()=>2,FpNodeWidth:()=>3,FpNodeHeight:()=>4};
+  const memory={buffer:new ArrayBuffer(2048)};let ptr=128,next=1,freed=0,columns,display,width,gaps=[],calculated;
+  const e={memory,FpAbiVersion:()=>1,FpNodeNew:()=>next++,FpNodeFree(){},FpNodeAppend(){return 1},FpNodeSetDisplay(h,v){display=v;return 1},FpNodeSetWidth(h,u,v){width=[u,v];return 1},FpNodeSetHeight(){return 1},FpNodeSetGap(h,a,u,v){gaps.push([a,u,v]);return 1},FpNodeSetFlexDirection(){return 1},FpNodeSetJustifyContent(){return 1},FpNodeSetAlignItems(){return 1},FpGridTracksAlloc:()=>ptr,FpGridTracksFree:()=>freed++,FpNodeSetGridTemplateColumns(h,p,n){columns=[...new Float32Array(memory.buffer,p,n*2)];return 1},FpNodeSetGridTemplateRows(){return 1},FpNodeCalculate(...args){calculated=args;return 1},FpNodeLeft:()=>1,FpNodeTop:()=>2,FpNodeWidth:()=>3,FpNodeHeight:()=>4};
   const fp=createFloatPigmentBackend({exports:e}),root=fp.createNode();fp.setDisplay(root,'grid');fp.setWidth(root,{unit:'percent',value:.5});fp.setGap(root,{row:4,column:9});fp.setGridTemplateColumns(root,[{unit:'fr',value:1},{unit:'px',value:20},{unit:'min-content'}]);
   assert.equal(display,3);assert.deepEqual(width,[2,.5]);assert.deepEqual(gaps,[[0,1,4],[1,1,9]]);assert.deepEqual(columns,[3,1,1,20,4,0]);assert.equal(freed,1);assert.deepEqual(fp.rect(root),{x:1,y:2,width:3,height:4});
+  fp.calculate(root,{width:530,height:Infinity,maxWidth:530,maxHeight:720});assert.deepEqual(calculated,[root,530,Infinity,530,720]);
+  assert.throws(()=>fp.calculate(root,{width:530,height:-Infinity,maxWidth:530,maxHeight:720}),/finite or \+Infinity/);
   assert.throws(()=>fp.setGridTemplateColumns(root,[]),/tracks required/);
   assert.throws(()=>createFloatPigmentBackend({exports:{...e,FpAbiVersion:()=>2}}),/ABI version/);
 });
