@@ -39,7 +39,7 @@ test('WXWebAssembly fixture is a standalone non-release Mini Game project',()=>{
   const manifest=writeWxWasmFixture({wasmPath:wasm,vendor,outDir:out});
   assert.equal(manifest.releaseReady,false);assert.equal(manifest.officialDevTools,'not-run');
   for(const f of ['game.js','game.json','project.config.json','layout-runtime.js','float-pigment-layout.wasm','fixture-manifest.json','third-party/float-pigment-MIT.txt'])assert.ok(fs.existsSync(path.join(out,f)),f);
-  const game=fs.readFileSync(path.join(out,'game.js'),'utf8');assert.match(game,/WXWebAssembly/);assert.match(game,/__H5PUBLISHER_FLOAT_PIGMENT_WX__/);
+  const game=fs.readFileSync(path.join(out,'game.js'),'utf8');assert.match(game,/WXWebAssembly/);assert.match(game,/__H5PUBLISHER_FLOAT_PIGMENT_WX__/);assert.match(game,/PUBLISHER_FLOAT_PIGMENT_WX_READY_052D/);assert.match(game,/PUBLISHER_FLOAT_PIGMENT_WX_TOUCHED_052D/);assert.match(game,/wx\.onTouchStart/);
   const cfg=JSON.parse(fs.readFileSync(path.join(out,'project.config.json'),'utf8'));assert.equal(cfg.compileType,'game');assert.equal(cfg.appid,'touristappid');
   fs.rmSync(tmp,{recursive:true,force:true});
 });

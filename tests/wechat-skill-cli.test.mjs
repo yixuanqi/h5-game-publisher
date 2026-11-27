@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {argsFor,statusGate,unwrapResponse,responseGate,fixtureGate,imageTap,pendingDecision} from '../platforms/wechat/skill-cli/contract.mjs';
+import {argsFor,statusGate,unwrapResponse,responseGate,fixtureGate,wxWasmFixtureGate,imageTap,pendingDecision} from '../platforms/wechat/skill-cli/contract.mjs';
 test('CLI gate requires compatible version and login, distinguishes CLI token from MCP',()=>{
   const ready={versionRelation:'equal',loginExpired:false,mcpTokenRequired:true};
   assert.equal(statusGate(ready),null);
@@ -32,4 +32,18 @@ test('refresh or login is not runtime proof: original marker storage bin and inc
   assert.equal(fixtureGate(v),true);
   assert.throws(()=>fixtureGate(v,{after:true,previousTaps:0}),/touch/);
   assert.equal(fixtureGate({...v,taps:1},{after:true,previousTaps:0}),true);
+});
+
+test('reviewed 0.3.11 runtime-info and phone-preview tools are diagnostic-only allowlisted',()=>{
+  assert.doesNotThrow(()=>argsFor('automation_runtime_info',['--action','systemInfo']));
+  assert.doesNotThrow(()=>argsFor('auto_preview',[]));
+  assert.throws(()=>argsFor('upload'),/Unapproved/);
+});
+test('WX float-pigment fixture requires real WX runtime, exact Grid result and increasing touch',()=>{
+  const v={marker:'PUBLISHER_FLOAT_PIGMENT_WX_052D',phase:'pass',runtime:'wx',taps:0,actualX:103,delta:0};
+  assert.equal(wxWasmFixtureGate(v),true);
+  assert.throws(()=>wxWasmFixtureGate({...v,runtime:'standard'}),/not ready/);
+  assert.throws(()=>wxWasmFixtureGate({...v,actualX:104,delta:1}),/Grid/);
+  assert.throws(()=>wxWasmFixtureGate(v,{after:true,previousTaps:0}),/touch/);
+  assert.equal(wxWasmFixtureGate({...v,taps:1},{after:true,previousTaps:0}),true);
 });

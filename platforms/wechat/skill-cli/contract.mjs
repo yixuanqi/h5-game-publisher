@@ -1,7 +1,7 @@
 // Contract for reviewed wechatide-skill 0.3.11. No subprocesses in this file.
 export const skillVersion='0.3.11';
 export const clientName='H5GamePublisher';
-export const allowedTools=new Set(['check_wechatide_status','project_import','open_project_window','simulator_refresh','simulator_screenshot','automation_evaluate','automation_game_action','get_simulator_console','get_simulator_network','polling_task_result']);
+export const allowedTools=new Set(['check_wechatide_status','project_import','open_project_window','simulator_refresh','simulator_screenshot','automation_runtime_info','automation_evaluate','automation_game_action','get_simulator_console','get_simulator_network','auto_preview','polling_task_result']);
 export function argsFor(tool,flags=[],token){
   if(!allowedTools.has(tool))throw Error('Unapproved tool: '+tool);
   const args=['-c',clientName,tool,...flags];
@@ -41,6 +41,13 @@ export function fixtureGate(v,{after=false,previousTaps=0}={}){
   if(v?.marker!=='PUBLISHER_OFFICIAL_READY_051C')throw Error('Original fixture marker not observed');
   if(v.storage?.immediate!==true||v.storage?.removed!==true||v.files?.bin?.ok!==true)throw Error('Native storage or binary file check failed');
   if(!Number.isInteger(v.taps)||v.taps<0||(after&&v.taps<=previousTaps))throw Error('Native touch not verified');
+  return true;
+}
+export function wxWasmFixtureGate(v,{after=false,previousTaps=0}={}){
+  if(v?.marker!=='PUBLISHER_FLOAT_PIGMENT_WX_052D')throw Error('WX WASM fixture marker not observed');
+  if(v.phase!=='pass'||v.runtime!=='wx')throw Error('WXWebAssembly float-pigment probe not ready');
+  if(!Number.isFinite(v.actualX)||!Number.isFinite(v.delta)||Math.abs(v.actualX-103)>0.05||v.delta>0.05)throw Error('WX float-pigment Grid result mismatch');
+  if(!Number.isInteger(v.taps)||v.taps<0||(after&&v.taps<=previousTaps))throw Error('WX WASM native touch not verified');
   return true;
 }
 export function imageTap(width,height){
