@@ -8,6 +8,7 @@ import {chromium} from 'playwright';
 import {exportGame} from '../../../scripts/import-blog.mjs';
 import {snapshot,assertSnapshot,assertDisjoint,gitBlob,within} from '../../../scripts/source-integrity.mjs';
 import {createCanvas} from '@napi-rs/canvas';
+import {makeDiagnosticFonts} from './diagnostic-fonts.mjs';
 import {layoutTextColumn,paintColumn,hitColumn} from './paint-column.mjs';
 import {compilePaint,textColumnSource} from './source-paint.mjs';
 import {compileBoxStyles,sourceBox} from './source-box.mjs';
@@ -28,6 +29,7 @@ const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=u
 try{
   const imported=exportGame(spec.game,checkout,raw);rawBefore=snapshot(raw);report.rawFilesSha256=imported.sourceFilesSha256;
   const css=fs.readFileSync(path.join(raw,'styles.css'),'utf8'),boxRules=compileBoxStyles(css),paintRules=compilePaint(css);
+  const fonts=makeDiagnosticFonts();report.fontChoices=fonts.evidence;report.glyphProbe=fonts.checkHan();
   server=http.createServer((req,res)=>{try{const u=new URL(req.url,'http://127.0.0.1'),p=path.resolve(raw,'.'+decodeURIComponent(u.pathname==='/'?'/index.html':u.pathname));if(!within(raw,p)||!fs.statSync(p).isFile()){res.writeHead(404).end();return;}res.writeHead(200,{'Content-Type':mime[path.extname(p)]||'application/octet-stream','Cache-Control':'no-store'});fs.createReadStream(p).pipe(res);}catch{res.writeHead(404).end();}});
   await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
   const origin='http://127.0.0.1:'+server.address().port;
@@ -46,7 +48,7 @@ try{
       const width=sourceBox(boxRules,html,selector,env).contentWidth;
       const data=textColumnSource(paintRules,html,selector,env);
       const measure=createCanvas(1,1).getContext('2d');
-      const layout=layoutTextColumn(measure,width,data.parent,data.children,env);
+      const layout=layoutTextColumn(measure,width,data.parent,data.children,env,{resolveFamily:fonts.resolveFamily});
       const canvas=createCanvas(Math.ceil(layout.width),Math.ceil(layout.height)),draw=canvas.getContext('2d');
       paintColumn(draw,layout,env);
       fs.writeFileSync(path.join(out,name+'-independent-menu.png'),canvas.toBuffer('image/png'));
@@ -57,8 +59,16 @@ try{
         const r=p.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,children:[...p.children].filter(e=>getComputedStyle(e).display!=='none').map(e=>{const b=e.getBoundingClientRect();return {key:e.id,text:e.textContent.trim(),x:b.x-r.x,y:b.y-r.y,width:b.width,height:b.height};})};
       });
       await page.locator(selector).screenshot({path:path.join(out,name+'-browser-menu.png')});
+      // Chromium platform font names are comparison evidence only, never solver input.
+      const cdp=await ctx.newCDPSession(page);
+      try{
+        await cdp.send('DOM.enable');await cdp.send('CSS.enable');
+        const {root:domRoot}=await cdp.send('DOM.getDocument');
+        const {nodeId}=await cdp.send('DOM.querySelector',{nodeId:domRoot.nodeId,selector:'#btn-title-settings'});
+        scenario.referenceFonts=(await cdp.send('CSS.getPlatformFontsForNode',{nodeId})).fonts;
+      }finally{await cdp.detach();}
       assert.deepEqual(layout.rows.map(r=>r.key),ref.children.map(r=>r.key));
-      const rows=layout.rows.map((r,i)=>{const v=ref.children[i];assert.equal(r.text,v.text);return {key:r.key,text:r.text,predicted:{x:r.x,y:r.y,width:r.width,height:r.height},reference:v,metrics:r.metrics,maxDelta:Math.max(...['x','y','width','height'].map(k=>Math.abs(r[k]-v[k])))};});
+      const rows=layout.rows.map((r,i)=>{const v=ref.children[i];assert.equal(r.text,v.text);return {key:r.key,text:r.text,predicted:{x:r.x,y:r.y,width:r.width,height:r.height},reference:v,metrics:r.metrics,fonts:r.runs,maxDelta:Math.max(...['x','y','width','height'].map(k=>Math.abs(r[k]-v[k])))};});
       const maxDelta=Math.max(Math.abs(layout.height-ref.height),...rows.map(r=>r.maxDelta));
       Object.assign(scenario,{rows,maxDelta,nonzeroAlpha,independentSize:{width:layout.width,height:layout.height},referenceSize:{width:ref.width,height:ref.height}});
       const target=layout.rows.find(r=>r.key==='btn-title-settings');assert.ok(target);

@@ -1,4 +1,5 @@
 import {length,splitTop,horizontalBox} from './box-model.mjs';
+import {fontRuns,measureRuns,drawRuns} from './font-runs.mjs';
 // Small renderer for single-line text controls in a vertical column.
 // No IDs, game strings, reference coordinates or browser geometry.
 export function linearBackground(ctx,value,w,h){
@@ -16,7 +17,7 @@ export function linearBackground(ctx,value,w,h){
   return g;
 }
 function font(s,size){return (s['font-weight']??'400')+' '+size+'px '+(s['font-family']??'serif');}
-export function layoutTextColumn(ctx,width,parent,children,env){
+export function layoutTextColumn(ctx,width,parent,children,env,{resolveFamily}={}){
   const gap=length(parent['row-gap']??'0',width,env);
   let y=0;
   const rows=[];
@@ -26,25 +27,19 @@ export function layoutTextColumn(ctx,width,parent,children,env){
     if(s['text-align']!=='left')throw Error('Unsupported text alignment');
     const px=p=>length(s[p]??'0',width,env);
     const box=horizontalBox(s,width,env),size=px('font-size');
-    ctx.font=font(s,size);
-    const metrics=ctx.measureText(c.text);
-    const ascent=metrics.fontBoundingBoxAscent,descent=metrics.fontBoundingBoxDescent;
-    if(!Number.isFinite(ascent+descent)||ascent+descent<=0)throw Error('Font line metrics unavailable');
+    const spacing=s['letter-spacing']==='normal'?0:px('letter-spacing');
+    const runs=fontRuns(c.text,s,size,resolveFamily);
+    const {ascent,descent,textWidth}=measureRuns(ctx,runs,spacing);
     const lh=s['line-height']??'normal';
     const line=lh==='normal'?Math.ceil(ascent+descent):/^\d+(?:\.\d+)?$/.test(lh)?Number(lh)*size:length(lh,size,env);
     const pt=px('padding-top')+px('border-top-width'),pb=px('padding-bottom')+px('border-bottom-width');
     const h=Math.max(line+pt+pb,px('min-height'));
     y+=px('margin-top');
-    const spacing=s['letter-spacing']==='normal'?0:px('letter-spacing');
-    const textWidth=Array.from(c.text).reduce((n,ch)=>n+ctx.measureText(ch).width+spacing,0);
     if(textWidth>box.contentWidth+1)throw Error('Multiline/intrinsic text layout unsupported: '+c.key);
-    rows.push({...c,x:px('margin-left'),y,width:box.borderWidth,height:h,baseline:pt+(h-pt-pb-line)/2+(line-ascent-descent)/2+ascent,textX:px('padding-left')+px('border-left-width'),fontSize:size,spacing,metrics:{ascent,descent,line,textWidth}});
+    rows.push({...c,x:px('margin-left'),y,width:box.borderWidth,height:h,baseline:pt+(h-pt-pb-line)/2+(line-ascent-descent)/2+ascent,textX:px('padding-left')+px('border-left-width'),fontSize:size,spacing,runs,metrics:{ascent,descent,line,textWidth}});
     y+=h+px('margin-bottom')+gap;
   }
   return {width,height:rows.length?y-gap:0,rows};
-}
-function drawText(ctx,text,x,y,spacing){
-  for(const c of Array.from(text)){ctx.fillText(c,x,y);x+=ctx.measureText(c).width+spacing;}
 }
 export function paintColumn(ctx,layout,env){
   for(const r of layout.rows){
@@ -59,7 +54,7 @@ export function paintColumn(ctx,layout,env){
       ctx.fillStyle=s['border-bottom-color']??s.color;ctx.fillRect(0,r.height-bottom,r.width,bottom);
     }
     ctx.font=font(s,r.fontSize);ctx.textBaseline='alphabetic';ctx.fillStyle=s.color;
-    drawText(ctx,r.text,r.textX,r.baseline,r.spacing);
+    drawRuns(ctx,r.runs,r.textX,r.baseline,r.spacing);
     if(r.before?.content){
       const p=r.before,content=p.content.match(/^(['"])(.*?)\1$/);
       if(!content)throw Error('Unsupported pseudo content: '+p.content);
