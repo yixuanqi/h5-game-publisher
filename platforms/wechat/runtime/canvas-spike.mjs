@@ -14,7 +14,7 @@ import {installCanvasBridge} from './canvas-bridge.mjs';
 import {createNavigatorBridge} from './navigator-bridge.mjs';
 import {createPerformanceBridge} from './performance-bridge.mjs';
 import {performance as nodePerformance} from 'node:perf_hooks';
-const {createLocalFetch}=createRequire(import.meta.url)('../bootstrap/runtime.cjs');
+const {createLocalFetch,createFrameScheduler}=createRequire(import.meta.url)('../bootstrap/runtime.cjs');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..');
 const spec=JSON.parse(fs.readFileSync(path.join(root,'platforms/wechat/bootstrap/compatibility.json'),'utf8'));
 const checkout=fs.realpathSync(process.argv[2]||'upstream'),source=path.join(checkout,'docs',spec.game);
@@ -28,7 +28,7 @@ const before=snapshot(source);
 fs.mkdirSync(out,{recursive:true});
 const report={stage:'0.5.2b-canvas-spike',sourceSha:spec.sourceSha,framework:git(root,'rev-parse','HEAD'),result:'fail',backend:'Skia / Node diagnostic',officialDevTools:'not-run',gameplayParity:'not-run',releaseReady:false};
 let rawBefore;
-async function attempt(code,html,{canvas=false,navigator=false,timers=false,packagedFetch=false,performanceBridge=false}={}){
+async function attempt(code,html,{canvas=false,navigator=false,timers=false,packagedFetch=false,performanceBridge=false,frames=false}={}){
   const {window,document}=parseHTML(html);
   const bridge=canvas?installCanvasBridge(document,(w,h)=>createCanvas(w,h)):null;
   const nav=navigator?createNavigatorBridge({platform:'android',system:'Android 14',language:'zh_CN',wechatVersion:'8.0'}):undefined;
@@ -42,13 +42,25 @@ async function attempt(code,html,{canvas=false,navigator=false,timers=false,pack
     try{Object.defineProperty(window,'performance',{configurable:true,value:webPerformance});}
     catch{try{window.performance=webPerformance;}catch{}}
   }
+  const frameQueue=new Map();let frameId=0;
+  const rawFrameHost=frames?{
+    requestAnimationFrame(cb){const id=++frameId;frameQueue.set(id,cb);return id;},
+    cancelAnimationFrame(id){frameQueue.delete(id);}
+  }:undefined;
+  const frame=frames?createFrameScheduler(null,webPerformance,rawFrameHost):undefined;
+  if(frame){
+    try{
+      Object.defineProperty(window,'requestAnimationFrame',{configurable:true,value:frame.requestAnimationFrame});
+      Object.defineProperty(window,'cancelAnimationFrame',{configurable:true,value:frame.cancelAnimationFrame});
+    }catch{try{window.requestAnimationFrame=frame.requestAnimationFrame;window.cancelAnimationFrame=frame.cancelAnimationFrame;}catch{}}
+  }
   const observed=[];
   const observedConsole={
     log:(...args)=>observed.push({level:'log',text:args.map(String).join(' ')}),
     warn:(...args)=>observed.push({level:'warn',text:args.map(String).join(' ')}),
     error:(...args)=>observed.push({level:'error',text:args.map(String).join(' ')})
   };
-  const context=vm.createContext({window,document,console:observedConsole,...(nav?{navigator:nav}:{}),...(timers?{setTimeout,clearTimeout}:{}),...(fetchLocal?{fetch:fetchLocal}:{}),...(webPerformance?{performance:webPerformance}:{})});
+  const context=vm.createContext({window,document,console:observedConsole,...(nav?{navigator:nav}:{}),...(timers?{setTimeout,clearTimeout}:{}),...(fetchLocal?{fetch:fetchLocal}:{}),...(webPerformance?{performance:webPerformance}:{}),...(frame?{requestAnimationFrame:frame.requestAnimationFrame,cancelAnimationFrame:frame.cancelAnimationFrame}:{})});
   let outcome;
   try{vm.runInContext(code,context,{timeout:5000,filename:'original-main.bundle.js'});outcome={status:'returned-sync'};}
   catch(e){outcome={status:'blocked',error:String(e),stack:String(e.stack).split('\n').slice(0,14)};}
@@ -58,9 +70,14 @@ async function attempt(code,html,{canvas=false,navigator=false,timers=false,pack
   // the legacy fallback (450+900 ms). This is observation time only.
   await new Promise(resolve=>setTimeout(resolve,packagedFetch?80:timers?2900:0));
   await Promise.resolve();
+  if(frame&&frameQueue.size&&observed.every(x=>x.level!=='error')){
+    const [id,cb]=frameQueue.entries().next().value;frameQueue.delete(id);
+    try{cb();}catch(e){observed.push({level:'error',text:'[FrameError] '+String(e)});}
+    await Promise.resolve();
+  }
   const asyncErrors=observed.filter(x=>x.level==='error');
   const bootVerified=window.__ABV_BOOTED__===true;
-  return {...outcome,asyncErrors,observed:observed.slice(-20),stats:bridge?{...bridge.stats}:null,navigator:nav?{userAgent:nav.userAgent,platform:nav.platform,maxTouchPoints:nav.maxTouchPoints,serviceWorker:'serviceWorker' in nav}:null,bootVerified,cssLayoutVerified:false};
+  return {...outcome,asyncErrors,observed:observed.slice(-20),queuedFrames:frameQueue.size,stats:bridge?{...bridge.stats}:null,navigator:nav?{userAgent:nav.userAgent,platform:nav.platform,maxTouchPoints:nav.maxTouchPoints,serviceWorker:'serviceWorker' in nav}:null,bootVerified,cssLayoutVerified:false};
 }
 try{
   const imported=exportGame(spec.game,checkout,raw);rawBefore=snapshot(raw);
@@ -84,10 +101,13 @@ try{
   report.fetchOnly=await attempt(code,html,{canvas:true,navigator:true,timers:true,packagedFetch:true});
   assert.ok(report.fetchOnly.stats.contexts>0&&report.fetchOnly.stats.radialGradients>0,'Packaged fetch slice lost native Canvas progress');
   assert.match(JSON.stringify(report.fetchOnly.asyncErrors),/performance is not defined/,'Expected performance Red blocker changed; inspect before adapting');
-  report.green=await attempt(code,html,{canvas:true,navigator:true,timers:true,packagedFetch:true,performanceBridge:true});
-  assert.ok(report.green.stats.contexts>0&&report.green.stats.radialGradients>0,'Performance slice lost native Canvas progress');
-  assert.doesNotMatch(JSON.stringify(report.green.asyncErrors),/performance is not defined/,'Performance blocker persists');
-  assert.ok(report.green.bootVerified||report.green.asyncErrors.length>0,'Async bootstrap produced neither boot evidence nor an observable blocker');
+  report.performanceOnly=await attempt(code,html,{canvas:true,navigator:true,timers:true,packagedFetch:true,performanceBridge:true});
+  assert.ok(report.performanceOnly.stats.contexts>0&&report.performanceOnly.stats.radialGradients>0,'Performance slice lost native Canvas progress');
+  assert.match(JSON.stringify(report.performanceOnly.asyncErrors),/requestAnimationFrame is not defined/,'Expected rAF Red blocker changed; inspect before adapting');
+  report.green=await attempt(code,html,{canvas:true,navigator:true,timers:true,packagedFetch:true,performanceBridge:true,frames:true});
+  assert.ok(report.green.stats.contexts>0&&report.green.stats.radialGradients>0,'Frame scheduler slice lost native Canvas progress');
+  assert.doesNotMatch(JSON.stringify(report.green.asyncErrors),/requestAnimationFrame is not defined/,'Frame scheduler blocker persists');
+  assert.ok(report.green.bootVerified||report.green.asyncErrors.length>0,'One native-style frame produced neither boot evidence nor an observable blocker');
   // Independent native raster evidence, not a screenshot of the game or a visual parity result.
   const {document}=parseHTML('<html><body><canvas id="screen" width="32" height="32"></canvas></body></html>');
   const bridge=installCanvasBridge(document,(w,h)=>createCanvas(w,h));

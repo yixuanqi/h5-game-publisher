@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+const {createFrameScheduler}=createRequire(import.meta.url)('../platforms/wechat/bootstrap/runtime.cjs');
 import {installCanvasBridge} from '../platforms/wechat/runtime/canvas-bridge.mjs';
 import {createNavigatorBridge} from '../platforms/wechat/runtime/navigator-bridge.mjs';
 import {createPerformanceBridge} from '../platforms/wechat/runtime/performance-bridge.mjs';
@@ -48,4 +50,13 @@ test('Mini Game navigator exposes only truthful passive environment fields',()=>
 test('performance bridge keeps browser millisecond units and omits Chromium memory',()=>{
   const values=[2_000_000,2_004_250],p=createPerformanceBridge({getPerformance:()=>({now:()=>values.shift()})});
   assert.equal(p.now(),2000);assert.equal(p.now(),2004.25);assert.equal('memory' in p,false);
+});
+
+test('frame scheduler uses native queue but supplies normalized Web clock timestamp',()=>{
+  let queued=null,cancelled=null;
+  const host={requestAnimationFrame(cb){queued=cb;return 7;},cancelAnimationFrame(id){cancelled=id;}};
+  const clock={now:()=>123.5},f=createFrameScheduler(null,clock,host);let seen=null;
+  assert.equal(f.requestAnimationFrame(t=>{seen=t;}),7);queued(999999);assert.equal(seen,123.5);
+  f.cancelAnimationFrame(7);assert.equal(cancelled,7);
+  assert.throws(()=>createFrameScheduler(null,clock,{}),/Native frame scheduler/);
 });
