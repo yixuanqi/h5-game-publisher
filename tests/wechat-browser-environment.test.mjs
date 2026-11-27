@@ -22,12 +22,14 @@ test('browser environment composes verified Mini Game bridges without mutating p
   };
   const host={platformOwned:true};
   const fetch=async()=>({ok:true});
-  const env=createBrowserEnvironment({wx,window:win,canvas,host,fetch});
+  const values=new Map(),storage={get:k=>values.get(k)??null,set(k,v){values.set(k,v);return true;},remove(k){values.delete(k);return true;}};
+  const env=createBrowserEnvironment({wx,window:win,canvas,host,fetch,storage});
 
   assert.equal(env.window,win);assert.equal(env.document,win.document);
-  assert.equal(win.navigator,env.navigator);assert.equal(win.performance,env.performance);assert.equal(win.fetch,fetch);
+  assert.equal(win.navigator,env.navigator);assert.equal(win.performance,env.performance);assert.equal(win.fetch,fetch);assert.equal(win.localStorage,env.localStorage);assert.equal(win.location,env.location);
   assert.equal(win.innerWidth,844);assert.equal(win.innerHeight,390);assert.equal(win.devicePixelRatio,2);
   assert.match(env.navigator.userAgent,/Android Mobile/);assert.equal(env.navigator.maxTouchPoints,1);assert.equal(env.navigator.language,'zh-CN');
+  env.localStorage.setItem('save','ok');assert.equal(env.localStorage.getItem('save'),'ok');assert.equal(env.location.protocol,'wechatgame:');
   assert.equal(env.performance.now(),2000);
 
   let seen=null;
@@ -46,7 +48,9 @@ test('browser environment fails closed when required production adapters are mis
   const wx={getWindowInfo:()=>({windowWidth:640,windowHeight:360,pixelRatio:1,screenWidth:640,screenHeight:360}),getSystemInfoSync:()=>({windowWidth:640,windowHeight:360,pixelRatio:1,screenWidth:640,screenHeight:360,platform:'devtools'}),getDeviceInfo:()=>({platform:'devtools'}),getPerformance:()=>({now:()=>0})};
   const window={document:{},Event:class{},dispatchEvent:()=>true};
   const canvas={requestAnimationFrame(){return 1;},cancelAnimationFrame(){}};
+  const storage={get:()=>null,set:()=>true,remove:()=>true};
   assert.throws(()=>createBrowserEnvironment({wx,window,canvas}),/Packaged fetch/);
-  assert.throws(()=>createBrowserEnvironment({wx,window:{},canvas,fetch:()=>{}}),/DOM window/);
-  assert.throws(()=>createBrowserEnvironment({wx,window,canvas:{},fetch:()=>{}}),/Native frame scheduler/);
+  assert.throws(()=>createBrowserEnvironment({wx,window,canvas,fetch:()=>{}}),/storage adapter/);
+  assert.throws(()=>createBrowserEnvironment({wx,window:{},canvas,fetch:()=>{},storage}),/DOM window/);
+  assert.throws(()=>createBrowserEnvironment({wx,window,canvas:{},fetch:()=>{},storage}),/Native frame scheduler/);
 });
