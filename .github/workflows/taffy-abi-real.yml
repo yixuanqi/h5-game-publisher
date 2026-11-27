@@ -1,0 +1,48 @@
+name: Taffy ABI real WASM diagnostic
+on:
+  push:
+    branches: ['experiment/v054a-taffy-abi']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: JS interface regression
+        run: node --test tests/wechat-taffy-wx-gate.test.mjs tests/wechat-taffy-abi.test.mjs
+      - name: Install pinned Rust and WASM target
+        run: |
+          rustup toolchain install 1.92.0 --profile minimal
+          rustup target add --toolchain 1.92.0 wasm32-unknown-unknown
+      - uses: actions/checkout@v4
+        with:
+          repository: DioxusLabs/taffy
+          ref: 497de49c200daee81a18ce627bec98d5340ae57a
+          path: vendor-taffy
+          persist-credentials: false
+      - name: Compile actual Taffy and run geometry gate
+        run: |
+          mkdir -p .work
+          node platforms/wechat/ui-layout/taffy-build.mjs vendor-taffy .work/taffy-abi-054a
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: taffy-abi-evidence
+          path: |
+            .work/taffy-abi-054a/report.json
+            .work/taffy-abi-054a/Cargo.lock
+          if-no-files-found: warn
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: taffy-wx-diagnostic-project
+          path: .work/taffy-abi-054a/wx-project/
+          if-no-files-found: error
