@@ -6,15 +6,17 @@ import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
 import {createRequire} from 'node:module';
 import {skillVersion,argsFor,statusGate,unwrapResponse,responseGate,fixtureGate,wxWasmReadDecision,wxWasmFixtureGate,imageTap,pendingDecision} from './contract.mjs';
+import {checkCanvasProject,canvasDecision,canvasGate,screenshotGate} from './canvas-contract.mjs';
 import {FLOAT_PIGMENT} from '../runtime/float-pigment-pin.mjs';
 const here=path.dirname(fileURLToPath(import.meta.url)),root=path.resolve(here,'../../..');
 const opt=process.argv.slice(2);
 function option(k){const i=opt.indexOf(k);return i<0?null:opt[i+1];}
 const wxWasmInput=option('--wx-wasm-fixture'),wxWasmMode=Boolean(wxWasmInput);
-const out=path.join(root,'.work',wxWasmMode?'wechat-skill-cli-0311-wx-wasm-local':'wechat-skill-cli-0311-local');
-const project=wxWasmMode?path.resolve(wxWasmInput):path.join(out,'fixture'),journal=path.join(out,'private-journal.json');
+const canvasInput=option('--canvas-project'),canvasMode=Boolean(canvasInput);
+const out=path.join(root,'.work',canvasMode?'wechat-skill-cli-053-canvas-local':wxWasmMode?'wechat-skill-cli-0311-wx-wasm-local':'wechat-skill-cli-0311-local');
+const project=canvasMode?path.resolve(canvasInput):wxWasmMode?path.resolve(wxWasmInput):path.join(out,'fixture'),journal=path.join(out,'private-journal.json');
 const report={stage:'wechat-skill-cli-0311',backend:'wechatide-skill-call',scope:'fixture-only',officialDevTools:'not-verified',game:'not-run',device:'not-run',releaseReady:false,result:'blocked',checks:{}};
-let state={step:0},token,cli,PNG;
+let state={step:0},token,cli,PNG,canvasIdentity;
 function save(){const tmp=journal+'.tmp';fs.writeFileSync(tmp,JSON.stringify(state,null,2),{mode:0o600});fs.renameSync(tmp,journal);}
 function json(s){return JSON.parse(s.trim());}
 function call(tool,flags=[]){
@@ -34,11 +36,11 @@ const waitCell=new Int32Array(new SharedArrayBuffer(4));
 function responseValue(v){return v?.result??v?.data??v;}
 function waitForWxWasmReady(initial){
   let x=responseValue(initial);
-  if(!wxWasmMode)return x;
-  for(let attempt=0;attempt<20;attempt++){
-    const decision=wxWasmReadDecision(x);
+  if(!wxWasmMode&&!canvasMode)return x;
+  for(let attempt=0;attempt<(canvasMode?140:20);attempt++){
+    const decision=canvasMode?canvasDecision(x):wxWasmReadDecision(x);
     if(decision==='ready')return x;
-    if(decision==='stop')throw Error('WX WASM state is invalid; inspect simulator console');
+    if(decision==='stop')throw Error('Runtime state invalid: '+String(x?.error||x?.phase||'unknown').slice(0,1000));
     Atomics.wait(waitCell,0,0,250);
     const v=call('automation_evaluate',['--project',project,'--fn-source',fn]);
     const gated=responseGate(v);
@@ -49,7 +51,7 @@ function waitForWxWasmReady(initial){
     x=responseValue(v);
   }
   delete state.inflight;state.wxWasmReadTimeout=true;save();
-  throw Error('WX_WASM_READY_TIMEOUT: runtime stayed loading; safe to inspect and resume without replaying side effects');
+  throw Error('RUNTIME_READY_TIMEOUT: runtime stayed loading; safe to inspect and resume without replaying side effects');
 }
 function checkPng(name,bg){
   const p=PNG.sync.read(fs.readFileSync(path.join(out,name)));let backgroundPixels=0,markerPixels=0;
@@ -62,10 +64,18 @@ function checkPng(name,bg){
   if(backgroundPixels<1000||markerPixels<1000)throw Error('Screenshot lacks real fixture colors');
   return {width:p.width,height:p.height,backgroundPixels,markerPixels};
 }
-const fn=wxWasmMode?'function(){ var a=(typeof GameGlobal!==\"undefined\"&&GameGlobal.__H5PUBLISHER_FLOAT_PIGMENT_WX__)||null; var b=(typeof globalThis!==\"undefined\"&&globalThis.__H5PUBLISHER_FLOAT_PIGMENT_WX__)||null; return a||b; }':'function(){ return GameGlobal.__publisherOfficial051c }';
+const fn=canvasMode?'function(){return (typeof GameGlobal!=="undefined"&&GameGlobal.__H5PUBLISHER_CANVAS_PROBE__)||(typeof globalThis!=="undefined"&&globalThis.__H5PUBLISHER_CANVAS_PROBE__)||null;}':wxWasmMode?'function(){ var a=(typeof GameGlobal!==\"undefined\"&&GameGlobal.__H5PUBLISHER_FLOAT_PIGMENT_WX__)||null; var b=(typeof globalThis!==\"undefined\"&&globalThis.__H5PUBLISHER_FLOAT_PIGMENT_WX__)||null; return a||b; }':'function(){ return GameGlobal.__publisherOfficial051c }';
 const gate=wxWasmMode?wxWasmFixtureGate:fixtureGate;
 const beforeColor=wxWasmMode?[29,95,70]:[22,50,79],afterColor=wxWasmMode?[95,63,29]:[40,107,71];
-const steps=[
+const steps=canvasMode?[
+  {tool:'project_import',flags:()=>[]},
+  {tool:'open_project_window',flags:()=>['--window-mode','fullMode']},
+  {tool:'simulator_refresh',flags:()=>[]},
+  {tool:'automation_evaluate',flags:()=>['--fn-source',fn],verify:v=>{state.canvasEvidence=canvasGate(waitForWxWasmReady(v));}},
+  {tool:'simulator_screenshot',flags:()=>['--path',path.join(out,'canvas-playing.png'),'--optimize','false','--wait','1'],verify:()=>{state.screenshot=screenshotGate(PNG.sync.read(fs.readFileSync(path.join(out,'canvas-playing.png'))));}},
+  {tool:'automation_evaluate',flags:()=>['--fn-source',fn],verify:v=>{canvasGate(responseValue(v));state.afterVerified=true;}},
+  {tool:'get_simulator_console',flags:()=>['--command','grep -n .'],verify:v=>{fs.writeFileSync(path.join(out,'private-console.json'),JSON.stringify(v,null,2),{mode:0o600});state.logCaptured=true;}}
+]:[
   {tool:'project_import',flags:()=>[]},
   {tool:'open_project_window',flags:()=>['--window-mode','fullMode']},
   {tool:'simulator_refresh',flags:()=>[]},
@@ -76,9 +86,16 @@ const steps=[
   {tool:'simulator_screenshot',flags:()=>['--path',path.join(out,'after.png'),'--optimize','false','--wait','1'],verify:()=>{state.after=checkPng('after.png',afterColor);}},
   {tool:'get_simulator_console',flags:()=>['--command','grep -n .'],verify:v=>{const log=JSON.stringify(v),touch=wxWasmMode?'PUBLISHER_FLOAT_PIGMENT_WX_TOUCHED_052D':'PUBLISHER_OFFICIAL_TOUCHED_051C';if(!log.includes(touch))throw Error('Fixture touch console marker missing');if(wxWasmMode&&!log.includes('PUBLISHER_FLOAT_PIGMENT_WX_READY_052D'))throw Error('WX WASM ready console marker missing');state.logVerified=true;}}
 ];
-if(opt.includes('--phone-preview'))steps.push({tool:'auto_preview',flags:()=>[],verify:()=>{state.phonePreview=true;report.checks.phonePreview=true;}});
+if(!canvasMode&&opt.includes('--phone-preview'))steps.push({tool:'auto_preview',flags:()=>[],verify:()=>{state.phonePreview=true;report.checks.phonePreview=true;}});
 try{
   if(!opt.includes('--interactive-host')||!['win32','darwin'].includes(process.platform)||process.env.CI||process.env.GITHUB_ACTIONS)throw Error('LOCAL_INTERACTIVE_HOST_REQUIRED: do not run wechatide in sandbox/CI');
+  if(canvasMode&&(wxWasmMode||opt.includes('--fixture')||opt.includes('--phone-preview')))throw Error('Canvas mode must be isolated');
+  if(canvasMode){
+    const info=option('--build-info');
+    if(!path.isAbsolute(canvasInput)||!info||!path.isAbsolute(info))throw Error('Absolute project and build-info paths required');
+    canvasIdentity=checkCanvasProject(project,json(fs.readFileSync(info,'utf8')));
+    report.scope='original-canvas-only';report.checks.identity=canvasIdentity;report.nativeTouch='not-run';
+  }
   const install=option('--installation-report');
   if(!install||!path.isAbsolute(install))throw Error('Run Skill installation diagnostic locally first; provide absolute --installation-report path');
   const ready=json(fs.readFileSync(install,'utf8'));
@@ -88,14 +105,15 @@ try{
   const blocker=statusGate(status,Boolean(token));if(blocker)throw Error(blocker);
   report.checks.versionRelation=status.versionRelation;report.checks.loginReady=true;
   report.checks.cliTokenRequired=!!(status.cliTokenRequired??status.tokenRequired);
-  if(!opt.includes('--fixture')&&!wxWasmMode){
+  if(!opt.includes('--fixture')&&!wxWasmMode&&!canvasMode){
     report.result='environment-ready'; // Readiness only, never official execution.
   }else{
     // Reuse existing pinned pngjs dependency, not a new third-party runtime.
     const require=createRequire(path.join(here,'../devtools/package.json'));({PNG}=require('pngjs'));
     fs.mkdirSync(out,{recursive:true});
     let expectedFixtureIdentity=null;
-    if(wxWasmMode){
+    if(canvasMode){expectedFixtureIdentity=JSON.stringify(canvasIdentity);}
+    else if(wxWasmMode){
       if(!path.isAbsolute(wxWasmInput)||!fs.existsSync(project))throw Error('WX WASM fixture must be an existing absolute directory');
       for(const name of ['game.js','game.json','project.config.json','layout-runtime.js','float-pigment-layout.wasm','fixture-manifest.json'])if(!fs.existsSync(path.join(project,name)))throw Error('WX WASM fixture missing '+name);
       const manifest=json(fs.readFileSync(path.join(project,'fixture-manifest.json'),'utf8'));
@@ -110,9 +128,9 @@ try{
     if(fs.existsSync(journal)){
       state=json(fs.readFileSync(journal,'utf8'));
       if(!opt.includes('--resume'))throw Error('Existing local journal; use --resume after reviewing pending/failed state');
-      if(wxWasmMode&&state.fixtureIdentity!==expectedFixtureIdentity)throw Error('WX WASM fixture changed since journal was created; inspect and restart explicitly');
+      if((wxWasmMode||canvasMode)&&state.fixtureIdentity!==expectedFixtureIdentity)throw Error('WX WASM fixture changed since journal was created; inspect and restart explicitly');
     }else{
-      if(wxWasmMode){
+      if(wxWasmMode||canvasMode){
         state.fixtureIdentity=expectedFixtureIdentity;
       }else{
         if(fs.existsSync(project))throw Error('Unexpected existing fixture directory');
@@ -141,9 +159,14 @@ try{
       }
       step.verify?.(v);state.step++;delete state.inflight;save();
     }
+    if(canvasMode){
+      if(!state.canvasEvidence||!state.screenshot||!state.afterVerified||!state.logCaptured)throw Error('Missing Canvas evidence');
+      report.checks.canvas=state.canvasEvidence;report.checks.screenshot=state.screenshot;report.checks.consoleCaptured=true;report.officialDevTools='canvas-diagnostic-executed';report.game='original-playing-observed';report.result='pass';
+    }else{
     if(!state.before||!state.after||!state.logVerified)throw Error('Missing fixture evidence');
     report.checks.fixture={kind:wxWasmMode?'float-pigment-wx-wasm-052d':'official-051c',before:state.before,after:state.after,logVerified:true,phonePreview:!!state.phonePreview};
     report.officialDevTools=wxWasmMode?'wx-wasm-fixture-executed':'fixture-executed';report.result='pass';
+    }
   }
 }catch(e){report.blocker=String(e.message||e);process.exitCode=1;}
 finally{
