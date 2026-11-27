@@ -13,7 +13,7 @@ const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=u
 export async function evaluateFrozenSaveSlotsGrid({source,backend,evidenceDir}){
   const css=fs.readFileSync(path.join(source,'styles.css'),'utf8'),rules=compileStyles(css);
   let server,browser;
-  const report={selector:'#save-slots-grid',scenarios:[],geometryGatePx:1};
+  const report={selector:'#save-slots-grid',settingsSelector:'#settings-pane-system .settings-row',scenarios:[],geometryGatePx:1,settingsFlexGatePx:1};
   try{
     server=http.createServer((req,res)=>{
       try{
@@ -69,6 +69,39 @@ export async function evaluateFrozenSaveSlotsGrid({source,backend,evidenceDir}){
           for(const child of children)backend.freeNode(child);backend.freeNode(root);
         }
         if(evidenceDir)await page.locator('#title-slots-drawer').screenshot({path:path.join(evidenceDir,name+'-save-slots-original.png')});
+
+        await page.locator('#btn-close-slots-drawer').click();
+        await page.locator('#btn-title-settings').click();
+        await page.locator('#settings-modal').waitFor({state:'visible',timeout:10000});
+        await page.waitForFunction(()=>{const r=document.querySelector('#settings-pane-system .settings-row');if(!r||r.children.length<2)return false;const b=r.getBoundingClientRect();return b.width>0&&[...r.children].every(x=>x.getBoundingClientRect().width>0);},{},{timeout:10000});
+        const flexRef=await page.locator('#settings-pane-system .settings-row').first().evaluate(row=>{
+          const b=row.getBoundingClientRect(),cs=getComputedStyle(row),n=v=>Number.parseFloat(v)||0;
+          const left=n(cs.borderLeftWidth)+n(cs.paddingLeft),right=n(cs.borderRightWidth)+n(cs.paddingRight),top=n(cs.borderTopWidth)+n(cs.paddingTop),bottom=n(cs.borderBottomWidth)+n(cs.paddingBottom);
+          return {
+            parent:{width:b.width-left-right,height:b.height-top-bottom,outerWidth:b.width,outerHeight:b.height,columnGap:cs.columnGap,rowGap:cs.rowGap,justifyContent:cs.justifyContent,alignItems:cs.alignItems},
+            children:[...row.children].map((el,index)=>{const r=el.getBoundingClientRect();return {index,x:r.left-b.left-left,y:r.top-b.top-top,width:r.width,height:r.height};})
+          };
+        });
+        const flexHtml=await page.content(),flexAuthored=sourceStyles(rules,flexHtml,'#settings-pane-system .settings-row',env).parent;
+        assert.equal(flexAuthored.values.display,'flex','Source settings row is not Flex');
+        assert.equal(flexAuthored.unsupported.length,0,'Unsupported source Flex cascade: '+JSON.stringify(flexAuthored.unsupported.slice(0,3)));
+        const flexColumnGap=length(flexAuthored.values['column-gap']??'0',flexRef.parent.width,env),flexRowGap=length(flexAuthored.values['row-gap']??'0',flexRef.parent.width,env);
+        const flexRoot=backend.createNode(),flexChildren=flexRef.children.map(()=>backend.createNode());
+        try{
+          backend.setDisplay(flexRoot,'flex');backend.setWidth(flexRoot,flexRef.parent.width);backend.setHeight(flexRoot,flexRef.parent.height);
+          backend.setFlexDirection(flexRoot,flexAuthored.values['flex-direction']??'row');backend.setJustifyContent(flexRoot,flexAuthored.values['justify-content']??'flex-start');backend.setAlignItems(flexRoot,flexAuthored.values['align-items']??'stretch');
+          backend.setGap(flexRoot,{column:flexColumnGap,row:flexRowGap});
+          for(let i=0;i<flexChildren.length;i++){backend.setWidth(flexChildren[i],flexRef.children[i].width);backend.setHeight(flexChildren[i],flexRef.children[i].height);backend.appendChild(flexRoot,flexChildren[i]);}
+          backend.calculate(flexRoot,{width:flexRef.parent.width,height:flexRef.parent.height,maxWidth:profile.viewport.width,maxHeight:profile.viewport.height});
+          const actual=flexChildren.map((h,index)=>({index,...backend.rect(h)}));
+          const deltas=actual.map((a,i)=>({index:i,x:Math.abs(a.x-flexRef.children[i].x),y:Math.abs(a.y-flexRef.children[i].y)})),maxDelta=Math.max(...deltas.flatMap(d=>[d.x,d.y]));
+          scenario.settingsFlex={authored:{display:flexAuthored.values.display,justifyContent:flexAuthored.values['justify-content'],alignItems:flexAuthored.values['align-items'],columnGap:flexColumnGap,rowGap:flexRowGap},reference:flexRef,actual,deltas,maxDelta,pass:maxDelta<=report.settingsFlexGatePx};
+          assert.ok(scenario.settingsFlex.pass,'float-pigment settings Flex delta '+maxDelta+'px exceeds '+report.settingsFlexGatePx+'px');
+          scenario.pass=scenario.pass&&scenario.settingsFlex.pass;
+        }finally{
+          for(const child of flexChildren)backend.freeNode(child);backend.freeNode(flexRoot);
+        }
+        if(evidenceDir)await page.locator('#settings-modal .settings-journal-card').screenshot({path:path.join(evidenceDir,name+'-settings-original.png')});
       }catch(e){scenario.error=String(e.stack||e);scenario.pass=false;throw e;}
       finally{await ctx.close();}
     }

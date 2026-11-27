@@ -1,5 +1,5 @@
 // Bounded cascade for selected layout declarations, with explicit unsupported diagnostics.
-export const properties=new Set(['display','flex-direction','grid-template-columns','column-gap','row-gap','width','box-sizing']);
+export const properties=new Set(['display','flex-direction','justify-content','align-items','grid-template-columns','column-gap','row-gap','width','box-sizing']);
 export function mediaMatches(query,env){
   return query.split(',').some(branch=>branch.trim().split(/\s+and\s+/i).every(part=>{
     const m=part.trim().match(/^\(\s*([a-z-]+)\s*:\s*([^)]+)\)$/i);
