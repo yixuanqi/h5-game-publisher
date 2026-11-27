@@ -1,0 +1,40 @@
+name: WeChat V0.5.2b source CSS cascade feasibility
+on:
+  push:
+    paths:
+      - 'platforms/wechat/layout/**'
+      - 'tests/wechat-layout-cascade.test.mjs'
+      - '.github/workflows/wechat-layout-cascade.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  cascade:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test tests/wechat-layout-cascade.test.mjs tests/wechat-layout.test.mjs
+      - uses: actions/checkout@v4
+        with:
+          repository: yixuanqi/PhotoGallery
+          ref: cdb508594cc610733f248ec5d4123a3b9d954981
+          path: upstream
+          sparse-checkout: docs/ashen-bell-vow
+          persist-credentials: false
+      - run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1 linkedom@0.18.12 postcss@8.5.6 specificity@1.0.0
+      - run: node -e "for(const n of ['linkedom','postcss','specificity']){const p=require('./node_modules/'+n+'/package.json');console.log(n,p.version,p.license);if(!['MIT','ISC','Apache-2.0','BSD-3-Clause','BSD-2-Clause'].includes(p.license))throw Error('Review dependency license '+n)}"
+      - run: npx playwright install --with-deps chromium
+      - run: node platforms/wechat/layout/cascade-spike.mjs upstream
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wechat-052b-source-cascade-NOT-RELEASE
+          path: .work/wechat-cascade-052b/evidence/
+          if-no-files-found: warn
+          retention-days: 14
