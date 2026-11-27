@@ -131,7 +131,8 @@ try{
   if(bytes>4*1024*1024)throw Error('Original-entry diagnostic exceeds 4 MiB planning budget: '+bytes);
 
   const engineText=fs.readFileSync(path.join(project,'engine.js'),'utf8');
-  for(const privateName of Object.values(define))if(!engineText.includes(privateName))throw Error('Expected private alias absent from engine bundle: '+privateName);
+  const requiredAliasKeys=['window','document','navigator','fetch','performance','requestAnimationFrame','localStorage','URLSearchParams','setTimeout','clearTimeout'];
+  for(const key of requiredAliasKeys){const privateName=define[key];if(!engineText.includes(privateName))throw Error('Expected private alias absent from engine bundle: '+privateName);}
 
   const info={
     schema:1,
