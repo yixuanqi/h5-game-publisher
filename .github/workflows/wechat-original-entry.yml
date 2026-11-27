@@ -26,7 +26,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test tests/wechat-browser-basics.test.mjs tests/wechat-url-search-params.test.mjs tests/wechat-wx-dom-canvas.test.mjs tests/wechat-viewport-bridge.test.mjs tests/wechat-browser-environment.test.mjs tests/wechat-css-declarations.test.mjs tests/wechat-css-plan-runtime.test.mjs
+      - run: node --test tests/wechat-browser-basics.test.mjs tests/wechat-url-search-params.test.mjs tests/wechat-wx-dom-canvas.test.mjs tests/wechat-viewport-bridge.test.mjs tests/wechat-browser-environment.test.mjs tests/wechat-css-declarations.test.mjs tests/wechat-css-plan-runtime.test.mjs tests/wechat-computed-style-facade.test.mjs tests/wechat-geometry-facade.test.mjs tests/wechat-float-pigment-runtime.test.mjs
       - uses: actions/checkout@v4
         with:
           repository: yixuanqi/PhotoGallery
@@ -45,7 +45,7 @@ jobs:
           toolchain: 1.92.0
           targets: wasm32-unknown-unknown
       - run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund esbuild@0.25.12 linkedom@0.18.15 postcss@8.5.6 specificity@1.0.0
-      - run: node --test platforms/wechat/original-entry/css-plan-build.test.mjs
+      - run: node --test platforms/wechat/original-entry/css-plan-build.test.mjs platforms/wechat/original-entry/layout-requirements.test.mjs
       - run: node platforms/wechat/original-entry/build.mjs upstream vendor-float-pigment touristappid
       - run: node --check .work/wechat-original-entry-052f/project/game.js && node --check .work/wechat-original-entry-052f/project/host.js && node --check .work/wechat-original-entry-052f/project/engine.js
       - uses: actions/upload-artifact@v4
