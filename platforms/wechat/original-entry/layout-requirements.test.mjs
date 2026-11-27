@@ -6,7 +6,9 @@ const plan={schema:1,rules:[
   {selector:'.desktop',media:[],declarations:[
     {prop:'display',value:'flex'},
     {prop:'flex-wrap',value:'wrap'},
-    {prop:'position',value:'absolute'}
+    {prop:'position',value:'absolute'},
+    {prop:'aspect-ratio',value:'16 / 10'},
+    {prop:'order',value:'2'}
   ]},
   {selector:'body.is-mobile .title-hero-column',media:['(max-height: 560px)'],declarations:[
     {prop:'display',value:'grid'},
@@ -30,6 +32,7 @@ test('layout requirement audit identifies the mobile title blockers instead of n
   assert.equal(r.features.gridAutoRepeat.count,1);
   assert.equal(r.features.calc.count,1);
   assert.equal(r.features.absolutePosition.count,1);
+  assert.equal(r.features.aspectRatio.count,1);assert.equal(r.features.order.count,1);
   assert.ok(r.features.gridNonzeroMinmax.examples.some(x=>x.selector.includes('title-hero-column')));
 });
 
@@ -37,7 +40,7 @@ test('backend assessment rejects float-pigment 0.10.5 for full source plan and k
   const requirements=analyzeLayoutRequirements(plan);
   const fp=assessLayoutBackend(requirements,FLOAT_PIGMENT_0105_CAPABILITIES);
   assert.equal(fp.compatible,false);
-  for(const feature of ['gridNonzeroMinmax','gridAutoRepeat','gridPlacement','calc'])assert.ok(fp.missing.includes(feature));
+  for(const feature of ['gridNonzeroMinmax','gridAutoRepeat','gridPlacement','calc','aspectRatio','order'])assert.ok(fp.missing.includes(feature));
   assert.equal(fp.missing.includes('gridMinmax'),false);assert.equal(fp.missing.includes('gridRepeat'),false);
 
   const taffy=assessLayoutBackend(requirements,TAFFY_0160_DECLARED_CAPABILITIES);
