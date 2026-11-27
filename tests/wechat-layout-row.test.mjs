@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {fontRuns,measureRuns,drawRuns} from '../platforms/wechat/layout/font-runs.mjs';
+import {fontRuns,measureRuns,drawRuns,measureFontRun} from '../platforms/wechat/layout/font-runs.mjs';
 import {layoutRow,flattenRow} from '../platforms/wechat/layout/paint-row.mjs';
 const ctx={measureText:s=>({width:s.length*10,fontBoundingBoxAscent:8,fontBoundingBoxDescent:2})},env={width:200,height:100};
 const leaf=(key,text,extra={})=>({key,text,children:[],style:{'font-size':'10px','letter-spacing':'0',...extra}});
@@ -21,4 +21,12 @@ test('whole-run measurement preserves Latin kerning and spacing',()=>{
   const calls=[];m.fillText=(...args)=>calls.push(args);
   drawRuns(m,runs,0,10,2);
   assert.deepEqual(calls,[['A',0,10],['V',9,10]]);
+});
+
+test('fractional font size preserves subpixel advance instead of rounding every glyph',()=>{
+  const m={font:'',measureText(text){const size=Number(this.font.match(/(\d+(?:\.\d+)?)px/)[1]);return {width:Math.round(size)*[...text].length,fontBoundingBoxAscent:size,fontBoundingBoxDescent:size/4};}};
+  const run={font:'400 11.5px serif',text:'中文'};
+  assert.equal(measureFontRun(m,run).width,23);
+  assert.equal(m.font,run.font);
+  assert.equal(measureRuns(m,[run],1.2).textWidth,25.4);
 });

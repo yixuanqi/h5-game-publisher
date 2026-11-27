@@ -17,11 +17,19 @@ export function fontRuns(text,style,size,resolveFamily){
   }
   return runs;
 }
+export function measureFontRun(ctx,run,text=run.text){
+  ctx.font=run.font;
+  const match=run.font.match(/^(.*?)(\d+(?:\.\d+)?)px (.*)$/);
+  if(!match||Number.isInteger(Number(match[2])))return ctx.measureText(text);
+  const size=Number(match[2]),scale=4;
+  ctx.font=match[1]+(size*scale)+'px '+match[3];
+  try{const m=ctx.measureText(text);return {width:m.width/scale,fontBoundingBoxAscent:m.fontBoundingBoxAscent/scale,fontBoundingBoxDescent:m.fontBoundingBoxDescent/scale};}finally{ctx.font=run.font;}
+}
 export function measureRuns(ctx,runs,spacing){
   let ascent=0,descent=0,textWidth=0;
   for(const run of runs){
     ctx.font=run.font;
-    const m=ctx.measureText(run.text),a=m.fontBoundingBoxAscent,d=m.fontBoundingBoxDescent;
+    const m=measureFontRun(ctx,run),a=m.fontBoundingBoxAscent,d=m.fontBoundingBoxDescent;
     if(!Number.isFinite(a+d)||a+d<=0)throw Error('Font line metrics unavailable: '+run.font);
     ascent=Math.max(ascent,a);descent=Math.max(descent,d);
     // Measure the complete run to preserve kerning and shaping advances.
@@ -34,19 +42,19 @@ export function drawRuns(ctx,runs,x,y,spacing){
   for(const run of runs){
     ctx.font=run.font;
     const chars=Array.from(run.text);
-    if(!spacing){ctx.fillText(run.text,x,y);x+=ctx.measureText(run.text).width;continue;}
+    if(!spacing){ctx.fillText(run.text,x,y);x+=measureFontRun(ctx,run).width;continue;}
     // Prefer the host's text spacing capability when it is actually exposed.
     if(typeof ctx.letterSpacing==='string'){
       const old=ctx.letterSpacing;ctx.letterSpacing=spacing+'px';
       try{ctx.fillText(run.text,x,y);}finally{ctx.letterSpacing=old;}
-      x+=ctx.measureText(run.text).width+chars.length*spacing;continue;
+      x+=measureFontRun(ctx,run).width+chars.length*spacing;continue;
     }
     // Bounded fallback: use shaped prefix advances rather than independent glyph widths.
     let prefix='';
     for(let i=0;i<chars.length;i++){
       const ch=chars[i];prefix+=ch;
-      ctx.fillText(ch,x+ctx.measureText(prefix).width-ctx.measureText(ch).width+i*spacing,y);
+      ctx.fillText(ch,x+measureFontRun(ctx,run,prefix).width-measureFontRun(ctx,run,ch).width+i*spacing,y);
     }
-    x+=ctx.measureText(run.text).width+chars.length*spacing;
+    x+=measureFontRun(ctx,run).width+chars.length*spacing;
   }
 }
