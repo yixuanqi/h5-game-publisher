@@ -16,10 +16,7 @@ fn metrics(width: f32, gap: f32) -> [f32; 4] {
             display: Display::Grid,
             size: Size { width: length(width), height: auto() },
             gap: Size { width: length(gap), height: length(0.0) },
-            grid_template_columns: vec![
-                minmax(length(0.0), fr(1.04)),
-                minmax(length(248.0), fr(0.96)),
-            ],
+            grid_template_columns: "minmax(0, 1.04fr) minmax(248px, 0.96fr)".parse().unwrap(),
             ..Default::default()
         },
         &[a,b],
