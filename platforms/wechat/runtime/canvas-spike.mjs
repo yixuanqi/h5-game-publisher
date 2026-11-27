@@ -44,7 +44,9 @@ async function attempt(code,html,{canvas=false,navigator=false,timers=false}={})
   catch(e){outcome={status:'blocked',error:String(e),stack:String(e.stack).split('\n').slice(0,14)};}
   // Let bootstrapGame() promise continuations and its own catch handler run.
   await Promise.resolve();await Promise.resolve();
-  await new Promise(resolve=>setTimeout(resolve,0));
+  // Frozen NG1 loader retries the primary manifest (450+900 ms) and then
+  // the legacy fallback (450+900 ms). This is observation time only.
+  await new Promise(resolve=>setTimeout(resolve,timers?2900:0));
   await Promise.resolve();
   const asyncErrors=observed.filter(x=>x.level==='error');
   const bootVerified=window.__ABV_BOOTED__===true;
