@@ -49,9 +49,9 @@ export function assessLayoutBackend(requirements,capabilities){
 export const FLOAT_PIGMENT_0105_CAPABILITIES=Object.freeze({
   flex:true,
   grid:true,
-  gridMinmax:false,
+  gridMinmax:true,
   gridNonzeroMinmax:false,
-  gridRepeat:false,
+  gridRepeat:true,
   gridAutoRepeat:false,
   gridIntrinsicTracks:true,
   calc:false,
