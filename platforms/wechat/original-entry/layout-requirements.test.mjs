@@ -35,7 +35,8 @@ test('backend assessment rejects float-pigment 0.10.5 for full source plan and k
   const requirements=analyzeLayoutRequirements(plan);
   const fp=assessLayoutBackend(requirements,FLOAT_PIGMENT_0105_CAPABILITIES);
   assert.equal(fp.compatible,false);
-  for(const feature of ['gridMinmax','gridNonzeroMinmax','gridRepeat','gridAutoRepeat','calc'])assert.ok(fp.missing.includes(feature));
+  for(const feature of ['gridNonzeroMinmax','gridAutoRepeat','calc'])assert.ok(fp.missing.includes(feature));
+  assert.equal(fp.missing.includes('gridMinmax'),false);assert.equal(fp.missing.includes('gridRepeat'),false);
 
   const taffy=assessLayoutBackend(requirements,TAFFY_0160_DECLARED_CAPABILITIES);
   assert.equal(taffy.compatible,true);
