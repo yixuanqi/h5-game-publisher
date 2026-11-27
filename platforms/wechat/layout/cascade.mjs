@@ -27,11 +27,11 @@ export function wins(a,b){
   for(let i=0;i<x.length;i++)if(x[i]!==y[i])return x[i]>y[i];
   return true;
 }
-export function resolveCascade({rules,inline=[],matches,specificity,env}){
+export function resolveCascade({rules,inline=[],matches,specificity,env,expandDeclaration=expand}){
   const result={},unsupported=[];let order=0;
   function apply(decl,score,selector){
     let expanded;
-    try{expanded=expand(decl.prop,decl.value);}catch(e){unsupported.push({selector,property:decl.prop,error:String(e)});return;}
+    try{expanded=expandDeclaration(decl.prop,decl.value);}catch(e){unsupported.push({selector,property:decl.prop,error:String(e)});return;}
     for(const [prop,value] of expanded){
       const a={value,important:!!decl.important,specificity:score,order:order++,selector};
       if(wins(a,result[prop]))result[prop]=a;

@@ -1,0 +1,39 @@
+name: WeChat V0.5.2b source box sizing feasibility
+on:
+  push:
+    paths:
+      - 'platforms/wechat/layout/**'
+      - 'tests/wechat-layout-box.test.mjs'
+      - '.github/workflows/wechat-layout-box.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  box:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test tests/wechat-layout-box.test.mjs tests/wechat-layout-cascade.test.mjs tests/wechat-layout.test.mjs
+      - uses: actions/checkout@v4
+        with:
+          repository: yixuanqi/PhotoGallery
+          ref: cdb508594cc610733f248ec5d4123a3b9d954981
+          path: upstream
+          sparse-checkout: docs/ashen-bell-vow
+          persist-credentials: false
+      - run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1 linkedom@0.18.12 postcss@8.5.6 specificity@1.0.0
+      - run: npx playwright install --with-deps chromium
+      - run: node platforms/wechat/layout/box-spike.mjs upstream
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wechat-052b-source-box-NOT-RELEASE
+          path: .work/wechat-box-052b/evidence/
+          if-no-files-found: warn
+          retention-days: 14
