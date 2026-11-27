@@ -64,3 +64,12 @@ The pinned float-pigment type system exposes Grid tracks as MinContent / MaxCont
 4. Treat painting (gradients, pseudo-elements, SVG/images, borders, text raster) and event hit testing as a separate candidate layer. minigame-canvas-engine may remain useful there, but it is not the browser/runtime.
 5. Fail closed on unsupported layout features instead of falling back to invented coordinates or semantic approximations.
 6. Promotion beyond host geometry still requires the standalone WXWebAssembly fixture to pass through official WeChat DevTools/wechatide on an authorized interactive Windows/macOS host. No host test substitutes for that gate.
+
+
+## 0.5.2e DOM-semantics candidate — linkedom/worker
+
+The next reuse gate targets the DOM tree/selector/mutation/event layer only. \`linkedom/worker@0.18.15\` is pinned as a candidate because its worker export is designed for DOM-less Web/Worker environments and does not couple the entry to Node canvas. This does **not** make LinkeDOM a browser or a layout engine.
+
+\`.github/workflows/wechat-dom-semantics.yml\` checks frozen V46.1 against the actual DOM subset used by the game: selectors, createElement/createElementNS/createTextNode, innerHTML/textContent, append/appendChild, classList, style declaration, dataset and events. It audits known unsupported live-collection/MutationObserver patterns and fails if the frozen source uses them. It then bundles \`linkedom/worker\` with esbuild \`platform: browser\`, rejects Node built-ins, executes the bundle, records size/hash, and keeps a 4 MiB planning ceiling.
+
+The boundary is explicit: LinkeDOM geometry and computed style are never trusted. CSS cascade remains source-driven, Flex/Grid geometry remains float-pigment, and painting/hit testing remains a separate Canvas layer. This stage is candidate evidence only; no official DevTools or release claim is made until the workflow actually executes and later Mini Game runtime gates pass.
