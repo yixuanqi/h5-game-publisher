@@ -24,10 +24,11 @@ function timerPair(host){
   return {set,clear};
 }
 
-export function startOriginalEntry(wx,loadEngine,html,host=globalThis){
+export function startOriginalEntry(wx,loadEngine,html,layoutPlan,host=globalThis){
   if(!wx||typeof wx!=='object')throw Error('wx runtime required');
   if(typeof loadEngine!=='function')throw Error('engine loader required');
   if(typeof html!=='string'||!html.includes('id="gameCanvas"'))throw Error('Frozen HTML payload required');
+  if(!layoutPlan||layoutPlan.schema!==1||!Array.isArray(layoutPlan.rules))throw Error('Precompiled CSS layout plan required');
 
   const {window,document}=parseHTML(html);
   const canvas=installWxDomCanvas(document,wx);
@@ -68,7 +69,9 @@ export function startOriginalEntry(wx,loadEngine,html,host=globalThis){
     domPaint:'not-wired',
     inputBridge:'not-wired',
     layoutBackend:'pending',
-    wxWebAssembly:'pending'
+    wxWebAssembly:'pending',
+    cssPlanRules:layoutPlan.rules.length,
+    cssPlanReady:true
   };
   let timer=null,disposed=false,engine;
 
@@ -119,6 +122,7 @@ export function startOriginalEntry(wx,loadEngine,html,host=globalThis){
     ready,
     window,
     document,
+    layoutPlan,
     screen:canvas.screen,
     canvasBridge:canvas.bridge,
     environment,
