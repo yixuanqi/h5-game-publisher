@@ -49,7 +49,7 @@ const cargo=[
   'crate-type = ["cdylib"]',
   '',
   '[dependencies]',
-  'taffy = { path = "'+vendorPath+'", default-features = false, features = ["std","taffy_tree","grid","flexbox","block_layout","calc"] }',
+  'taffy = { path = "'+vendorPath+'", default-features = false, features = ["std","taffy_tree","grid","flexbox","block_layout","calc","parse"] }',
   '',
   '[profile.release]',
   'opt-level = "s"',
