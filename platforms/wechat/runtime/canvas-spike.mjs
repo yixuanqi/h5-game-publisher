@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {createRequire} from 'node:module';
-import {parseHTML} from 'linkedom';
+import {parseHTML} from 'linkedom/worker';
 import {createCanvas} from '@napi-rs/canvas';
 import {build} from 'esbuild';
 import {exportGame} from '../../../scripts/import-blog.mjs';
@@ -27,7 +27,7 @@ assert.equal(git(checkout,'status','--porcelain','--untracked-files=all','--','d
 assert.equal(gitBlob(fs.readFileSync(path.join(source,'src/main.js'))),spec.mainBlob);
 const before=snapshot(source);
 fs.mkdirSync(out,{recursive:true});
-const report={stage:'0.5.2b-canvas-spike',sourceSha:spec.sourceSha,framework:git(root,'rev-parse','HEAD'),result:'fail',backend:'Skia / Node diagnostic',officialDevTools:'not-run',gameplayParity:'not-run',releaseReady:false};
+const report={stage:'0.5.2b-canvas-spike',sourceSha:spec.sourceSha,framework:git(root,'rev-parse','HEAD'),result:'fail',backend:'Skia / Node diagnostic',domSemantics:'linkedom/worker@0.18.15',officialDevTools:'not-run',gameplayParity:'not-run',releaseReady:false};
 let rawBefore;
 async function attempt(code,html,{canvas=false,navigator=false,timers=false,packagedFetch=false,performanceBridge=false,frames=false}={}){
   const {window,document}=parseHTML(html);
