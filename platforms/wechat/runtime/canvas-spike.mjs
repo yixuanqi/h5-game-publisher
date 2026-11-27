@@ -13,8 +13,9 @@ import {snapshot,assertSnapshot,assertDisjoint,gitBlob,sha256} from '../../../sc
 import {installCanvasBridge} from './canvas-bridge.mjs';
 import {createNavigatorBridge} from './navigator-bridge.mjs';
 import {createPerformanceBridge} from './performance-bridge.mjs';
+import {createFrameScheduler} from './frame-scheduler.mjs';
 import {performance as nodePerformance} from 'node:perf_hooks';
-const {createLocalFetch,createFrameScheduler}=createRequire(import.meta.url)('../bootstrap/runtime.cjs');
+const {createLocalFetch}=createRequire(import.meta.url)('../bootstrap/runtime.cjs');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..');
 const spec=JSON.parse(fs.readFileSync(path.join(root,'platforms/wechat/bootstrap/compatibility.json'),'utf8'));
 const checkout=fs.realpathSync(process.argv[2]||'upstream'),source=path.join(checkout,'docs',spec.game);

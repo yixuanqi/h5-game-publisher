@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createRequire} from 'node:module';
-const {createFrameScheduler}=createRequire(import.meta.url)('../platforms/wechat/bootstrap/runtime.cjs');
+import {createFrameScheduler} from '../platforms/wechat/runtime/frame-scheduler.mjs';
 import {installCanvasBridge} from '../platforms/wechat/runtime/canvas-bridge.mjs';
 import {createNavigatorBridge} from '../platforms/wechat/runtime/navigator-bridge.mjs';
 import {createPerformanceBridge} from '../platforms/wechat/runtime/performance-bridge.mjs';

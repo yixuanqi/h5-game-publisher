@@ -61,23 +61,6 @@ function createOffscreenFactory(wx, screen) {
     seen.add(c);return c;
   };
 }
-function createFrameScheduler(canvas, performance, host=globalThis) {
-  if(!performance||typeof performance.now!=='function')throw Error('Performance clock unavailable');
-  const request=typeof canvas?.requestAnimationFrame==='function'
-    ? canvas.requestAnimationFrame.bind(canvas)
-    : (typeof host?.requestAnimationFrame==='function'?host.requestAnimationFrame.bind(host):null);
-  const cancel=typeof canvas?.cancelAnimationFrame==='function'
-    ? canvas.cancelAnimationFrame.bind(canvas)
-    : (typeof host?.cancelAnimationFrame==='function'?host.cancelAnimationFrame.bind(host):null);
-  if(!request||!cancel)throw Error('Native frame scheduler unavailable');
-  return Object.freeze({
-    requestAnimationFrame(cb){
-      if(typeof cb!=='function')throw TypeError('Frame callback required');
-      return request(()=>cb(performance.now()));
-    },
-    cancelAnimationFrame(id){return cancel(id);}
-  });
-}
 function attachLifecycle(wx, handlers) {
   const pairs=[['Show',handlers.show],['Hide',handlers.hide],['TouchStart',handlers.touch],['WindowResize',handlers.resize]];
   const active=[];
@@ -91,4 +74,4 @@ function attachLifecycle(wx, handlers) {
   }
   return ()=>{for(const [event,fn] of active)if(typeof wx['off'+event]==='function')wx['off'+event](fn);};
 }
-module.exports={createLocalFetch,createStorageAdapter,createSurface,createOffscreenFactory,createFrameScheduler,attachLifecycle};
+module.exports={createLocalFetch,createStorageAdapter,createSurface,createOffscreenFactory,attachLifecycle};
