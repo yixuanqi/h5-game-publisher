@@ -14,6 +14,7 @@ import {installCanvasBridge} from './canvas-bridge.mjs';
 import {createNavigatorBridge} from './navigator-bridge.mjs';
 import {createPerformanceBridge} from './performance-bridge.mjs';
 import {createFrameScheduler} from './frame-scheduler.mjs';
+import {installViewportBridge} from './viewport-bridge.mjs';
 import {performance as nodePerformance} from 'node:perf_hooks';
 const {createLocalFetch}=createRequire(import.meta.url)('../bootstrap/runtime.cjs');
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..');
@@ -31,6 +32,7 @@ const report={stage:'0.5.2b-canvas-spike',sourceSha:spec.sourceSha,framework:git
 let rawBefore;
 async function attempt(code,html,{canvas=false,navigator=false,timers=false,packagedFetch=false,performanceBridge=false,frames=false}={}){
   const {window,document}=parseHTML(html);
+  const viewport=installViewportBridge(window,{getWindowInfo:()=>({windowWidth:844,windowHeight:390,pixelRatio:2,screenWidth:844,screenHeight:390}),getSystemInfoSync:()=>({windowWidth:844,windowHeight:390,pixelRatio:2,screenWidth:844,screenHeight:390,platform:'android'}),getDeviceInfo:()=>({platform:'android'})});
   const bridge=canvas?installCanvasBridge(document,(w,h)=>createCanvas(w,h)):null;
   const nav=navigator?createNavigatorBridge({platform:'android',system:'Android 14',language:'zh_CN',wechatVersion:'8.0'}):undefined;
   if(nav){
@@ -78,7 +80,8 @@ async function attempt(code,html,{canvas=false,navigator=false,timers=false,pack
   }
   const asyncErrors=observed.filter(x=>x.level==='error');
   const bootVerified=window.__ABV_BOOTED__===true;
-  return {...outcome,asyncErrors,observed:observed.slice(-20),queuedFrames:frameQueue.size,stats:bridge?{...bridge.stats}:null,navigator:nav?{userAgent:nav.userAgent,platform:nav.platform,maxTouchPoints:nav.maxTouchPoints,serviceWorker:'serviceWorker' in nav}:null,bootVerified,cssLayoutVerified:false};
+  const viewportState={width:window.innerWidth,height:window.innerHeight,dpr:window.devicePixelRatio,landscape:window.matchMedia('(orientation: landscape)').matches,coarse:window.matchMedia('(hover: none) and (pointer: coarse)').matches};viewport.dispose();
+  return {...outcome,asyncErrors,observed:observed.slice(-20),queuedFrames:frameQueue.size,stats:bridge?{...bridge.stats}:null,navigator:nav?{userAgent:nav.userAgent,platform:nav.platform,maxTouchPoints:nav.maxTouchPoints,serviceWorker:'serviceWorker' in nav}:null,viewport:viewportState,bootVerified,cssLayoutVerified:false};
 }
 try{
   const imported=exportGame(spec.game,checkout,raw);rawBefore=snapshot(raw);
