@@ -1,9 +1,10 @@
-name: WeChat upstream Layout candidate feasibility
+name: WeChat upstream renderer candidate feasibility
 on:
   push:
     paths:
       - 'platforms/wechat/vendor-eval/**'
       - 'tests/wechat-vendor-layout.test.mjs'
+      - 'tests/wechat-float-pigment.test.mjs'
       - '.github/workflows/wechat-vendor-layout.yml'
   workflow_dispatch:
 permissions:
@@ -11,7 +12,7 @@ permissions:
 jobs:
   evaluate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,7 +20,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test tests/wechat-vendor-layout.test.mjs
+      - run: node --test tests/wechat-vendor-layout.test.mjs tests/wechat-float-pigment.test.mjs
       - uses: actions/checkout@v4
         with:
           repository: yixuanqi/PhotoGallery
@@ -37,14 +38,25 @@ jobs:
             LICENSE
             package.json
           persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: wechat-miniprogram/float-pigment
+          ref: 830c70afdc0ee092e74ad928dc9c6e05844ef62a
+          path: vendor-float-pigment
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.92.0
+          targets: wasm32-unknown-unknown
       - run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund playwright@1.56.1 linkedom@0.18.12 postcss@8.5.6 specificity@1.0.0
       - run: npx playwright install --with-deps chromium
       - run: sudo apt-get install -y fonts-noto-cjk
       - run: node platforms/wechat/vendor-eval/layout-spike.mjs upstream vendor-layout
+      - run: node platforms/wechat/vendor-eval/float-pigment-spike.mjs upstream vendor-float-pigment
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: wechat-upstream-layout-evaluation-NOT-RELEASE
+          name: wechat-upstream-renderer-evaluation-NOT-RELEASE
           path: .work/wechat-vendor-layout/evidence/
           if-no-files-found: warn
           retention-days: 14

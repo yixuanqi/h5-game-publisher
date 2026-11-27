@@ -94,6 +94,7 @@ try{
   assert.ok(report.scenarios.every(s=>s.pass),'Vendor execution or interaction failed');
   report.result='trial-executed'; // Not parity, not release.
   report.parityReady=false;
+  report.candidateDecision=report.scenarios.every(s=>s.parityReady)?'full-renderer-candidate':'partial-component-only';
 }catch(e){report.error=String(e.stack||e);console.error(report.error);process.exitCode=1;}
 finally{
   if(browser)await browser.close();if(server)await new Promise(resolve=>server.close(resolve));
