@@ -1,0 +1,3 @@
+# V0.5.4c3a1 — namespace-aware SVG coverage identity
+
+Base d9ee16a0c6fdd6b374bbc5d70ac02cd9e78f0e4a; failed run 46122710300: 44/44 JS tests and all earlier WASM/Chromium gates passed; full title audit stopped at LinkeDOM radialgradient vs Chromium radialGradient. Normalize only standard HTML-parser SVG adjusted names for structural comparison. Preserve raw names, node paths, namespace and IDs; reject different names, namespaces, identities or counts. Do not mutate DOM or game sources. Save coverage details before assertion. Add regression for exact observed case and negative controls. Preserve all previous layout gates; fullTitleParity is still separate from diagnostic success. No release or native runtime claims.

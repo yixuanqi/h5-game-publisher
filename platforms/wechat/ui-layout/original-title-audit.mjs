@@ -9,12 +9,12 @@ import {parseHTML} from 'linkedom/worker';
 import {compileRuntimeCssPlan} from '../original-entry/css-plan-build.mjs';
 import {resolvePlanStyle} from '../runtime/css-plan-runtime.mjs';
 import {createLayoutSnapshot} from './dom-layout.mjs';
-import {collectElementPaths,compareRectangles} from './title-audit-utils.mjs';
+import {collectElementPaths,compareRectangles,elementIdentity} from './title-audit-utils.mjs';
 const {loadTaffy}=createRequire(import.meta.url)('./taffy-runtime.cjs');
 const [checkout,wasm,out]=process.argv.slice(2);
 const pin='cdb508594cc610733f248ec5d4123a3b9d954981';
 const git=(...args)=>{const r=spawnSync('git',args,{cwd:checkout,encoding:'utf8'});assert.equal(r.status,0,r.stderr);return r.stdout.trim();};
-const report={stage:'V0.5.4c3a',scope:'full authored title subtree static mobile state, inventory and attempted host geometry',sourceSha:pin,diagnostic:'fail',fullTitleParity:false,wx:'not-run',releaseReady:false,results:[]};
+const report={stage:'V0.5.4c3a1',scope:'full authored title subtree static mobile state, inventory and attempted host geometry',sourceSha:pin,diagnostic:'fail',fullTitleParity:false,wx:'not-run',releaseReady:false,results:[]};
 let browser,server;
 try{
  assert.equal(git('rev-parse','HEAD'),pin);
@@ -54,7 +54,7 @@ try{
    const root=document.querySelector('#title-screen'),rows=[];
    function visit(el,path){
     const r=el.getBoundingClientRect(),cs=getComputedStyle(el);
-    rows.push({path,tag:el.localName,id:el.id||'',rect:{x:r.x,y:r.y,width:r.width,height:r.height},display:cs.display,visibility:cs.visibility});
+    rows.push({path,namespaceURI:el.namespaceURI,tag:el.localName,id:el.id||'',rect:{x:r.x,y:r.y,width:r.width,height:r.height},display:cs.display,visibility:cs.visibility});
     [...el.children].forEach((c,i)=>visit(c,path+'/'+i));
    }
    visit(root,'0');return rows;
@@ -63,7 +63,13 @@ try{
   document.body.classList.add('is-mobile');
   const title=document.querySelector('#title-screen');title.classList.add('title-revealed');
   const entries=collectElementPaths(title),byElement=new Map(entries.map(x=>[x.element,x.path]));
-  assert.deepEqual(entries.map(x=>[x.path,x.element.localName]),oracle.map(x=>[x.path,x.tag]),'Source/browser element coverage mismatch');
+  const sourceIdentities=entries.map(({path,element:el})=>({path,namespaceURI:el.namespaceURI,tag:el.localName,id:el.id||''}));
+  const sourceKeys=sourceIdentities.map(elementIdentity),oracleKeys=oracle.map(elementIdentity);
+  // Save coverage evidence even if the strict comparison fails.
+  report.coverage??=[];
+  report.coverage.push({viewport:env,sourceCount:sourceKeys.length,oracleCount:oracleKeys.length,
+   mismatches:sourceIdentities.flatMap((row,i)=>JSON.stringify(sourceKeys[i])===JSON.stringify(oracleKeys[i])?[]:[{source:row,browser:oracle[i]??null}])});
+  assert.deepEqual(sourceKeys,oracleKeys,'Source/browser element coverage mismatch');
   const issues=[],inventory=[];
   const cache=new WeakMap();
   function resolve(el){
@@ -89,7 +95,7 @@ try{
     if(['svg','button','input','canvas'].includes(el.localName))issues.push({path:key,kind:'native-or-replaced-element',tag:el.localName});
     if(Object.keys(unmapped).length)issues.push({path:key,kind:'unmapped-style',properties:Object.keys(unmapped)});
    }
-   inventory.push({path:key,tag:el.localName,id:el.id||'',hidden,style,textStyle,unmapped});
+   inventory.push({path:key,namespaceURI:el.namespaceURI,tag:el.localName,id:el.id||'',hidden,style,textStyle,unmapped});
    return {element:el,style,textStyle,children:[...el.children].map(c=>visit(c,hidden))};
   }
   const tree=visit(title);

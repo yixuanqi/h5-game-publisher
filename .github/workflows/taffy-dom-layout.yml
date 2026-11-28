@@ -1,4 +1,4 @@
-name: Taffy DOM layout V0.5.4c3a original title diagnostic
+name: Taffy DOM layout V0.5.4c3a1 original title diagnostic
 on:
   push:
     branches: ['experiment/v054b-dom-layout']
