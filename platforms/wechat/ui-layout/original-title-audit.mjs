@@ -14,7 +14,7 @@ const {loadTaffy}=createRequire(import.meta.url)('./taffy-runtime.cjs');
 const [checkout,wasm,out]=process.argv.slice(2);
 const pin='cdb508594cc610733f248ec5d4123a3b9d954981';
 const git=(...args)=>{const r=spawnSync('git',args,{cwd:checkout,encoding:'utf8'});assert.equal(r.status,0,r.stderr);return r.stdout.trim();};
-const report={stage:'V0.5.4c3a1',scope:'full authored title subtree static mobile state, inventory and attempted host geometry',sourceSha:pin,diagnostic:'fail',fullTitleParity:false,wx:'not-run',releaseReady:false,results:[]};
+const report={stage:'V0.5.4c3b1',scope:'full authored title subtree static mobile state, inventory and attempted host geometry',sourceSha:pin,diagnostic:'fail',fullTitleParity:false,wx:'not-run',releaseReady:false,results:[]};
 let browser,server;
 try{
  assert.equal(git('rev-parse','HEAD'),pin);
@@ -78,6 +78,9 @@ try{
    const r=resolvePlanStyle(plan,el,env,parent?resolve(parent).values:{});
    cache.set(el,r);return r;
   }
+  // Authored transform/filter effects can change fixed containing blocks.
+  // Non-none effects are conservatively rejected by the fixed adapter.
+  const establishesFixedContainingBlock=v=>['transform','filter','backdrop-filter','perspective','contain','will-change'].some(k=>v[k]&&!['none','normal','auto'].includes(v[k]));
   function visit(el,hidden=false){
    const key=byElement.get(el);let r;
    try{r=resolve(el);}catch(e){issues.push({path:key,kind:'cascade',error:String(e)});r={values:{},unsupportedSelectors:[]};}
@@ -96,7 +99,12 @@ try{
     if(Object.keys(unmapped).length)issues.push({path:key,kind:'unmapped-style',properties:Object.keys(unmapped)});
    }
    inventory.push({path:key,namespaceURI:el.namespaceURI,tag:el.localName,id:el.id||'',hidden,style,textStyle,unmapped});
-   return {element:el,style,textStyle,children:[...el.children].map(c=>visit(c,hidden))};
+   let fixedAncestorOutsideTree=false;
+   for(let p=title.parentElement;p;p=p.parentElement){
+    try{if(establishesFixedContainingBlock(resolve(p).values))fixedAncestorOutsideTree=true;}
+    catch{fixedAncestorOutsideTree=true;}
+   }
+   return {element:el,style,textStyle,establishesFixedContainingBlock:establishesFixedContainingBlock(r.values),fixedAncestorOutsideTree,children:[...el.children].map(c=>visit(c,hidden))};
   }
   const tree=visit(title);
   const expected=Object.fromEntries(oracle.map(x=>[x.path,x.rect]));
@@ -119,5 +127,5 @@ try{
 finally{
  try{assert.equal(git('status','--porcelain','--untracked-files=all'),'');report.sourceIntegrity='pass';}
  catch(e){report.sourceIntegrity='fail';report.diagnostic='fail';report.sourceError=String(e);throw e;}
- finally{if(browser)await browser.close();if(server)await new Promise(ok=>server.close(ok));fs.writeFileSync(out,JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({stage:report.stage,diagnostic:report.diagnostic,fullTitleParity:report.fullTitleParity,sourceIntegrity:report.sourceIntegrity,results:report.results.map(r=>({viewport:r.viewport,nodeCount:r.nodeCount,issues:r.issues.length,attempt:r.attempt.status,error:r.attempt.error}))}));}
+ finally{if(browser)await browser.close();if(server)await new Promise(ok=>server.close(ok));fs.writeFileSync(out,JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({stage:report.stage,diagnostic:report.diagnostic,fullTitleParity:report.fullTitleParity,sourceIntegrity:report.sourceIntegrity,results:report.results.map(r=>({viewport:r.viewport,nodeCount:r.nodeCount,issues:r.issues.length,attempt:r.attempt.status,error:r.attempt.error,issueKinds:Object.fromEntries([...new Set(r.issues.map(i=>i.kind))].map(k=>[k,r.issues.filter(i=>i.kind===k).length])),issueProperties:[...new Set(r.issues.flatMap(i=>i.properties??[]))]}))}));}
 }

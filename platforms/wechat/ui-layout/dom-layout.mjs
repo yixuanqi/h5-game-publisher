@@ -2,7 +2,7 @@
 import {evaluateCssLength} from './css-length.mjs';
 export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=viewport.width,rootContainingHeight=viewport.height,safeArea,measureTextLeaf}={}){
   // Bounded static geometry; publish only after the complete tree computes.
-  const rects=new Map(),records=[],seen=new Set();
+  const rects=new Map(),records=[],seen=new Set(),fixedGroups=[];
   const props=new Set('display width height min-width min-height max-width max-height column-gap row-gap flex-direction flex-wrap justify-content align-items align-self flex-grow flex-shrink flex-basis grid-template-columns grid-template-rows position top right bottom left padding-top padding-right padding-bottom padding-left margin-top margin-right margin-bottom margin-left border-top-width border-right-width border-bottom-width border-left-width box-sizing aspect-ratio grid-column-start grid-column-end grid-row-start grid-row-end'.split(' '));
   const lengthProps=/^(?:width|height|min-width|min-height|max-width|max-height|column-gap|row-gap|flex-basis|top|right|bottom|left|padding-(?:top|right|bottom|left)|margin-(?:top|right|bottom|left)|border-(?:top|right|bottom|left)-width)$/;
   if(![viewport.width,viewport.height,rootContainingWidth,rootContainingHeight].every(n=>Number.isFinite(n)&&n>=0&&n<=1e6))throw Error('Invalid layout viewport');
@@ -19,7 +19,9 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
         const vertical=/^(?:height|min-height|max-height|top|bottom)$/.test(p);
         const normalFlow=!style.position||['static','relative'].includes(style.position);
         const nestedProperty=/^(?:width|height|min-width|min-height|max-width|max-height|padding-|margin-)/.test(p);
-        const percentageBase=isRoot&&!/^(?:flex-basis|column-gap|row-gap|border-)/.test(p)
+        const percentageBase=style.position==='fixed'&&!/^(?:flex-basis|column-gap|row-gap|border-)/.test(p)
+          ? (vertical?viewport.height:viewport.width)
+          : isRoot&&!/^(?:flex-basis|column-gap|row-gap|border-)/.test(p)
           ? (vertical?rootContainingHeight:rootContainingWidth)
           : normalFlow&&nestedProperty?parent?.childBases?.[vertical?'height':'width']:undefined;
         const px=evaluateCssLength(v,{viewport,percentageBase,safeArea});
@@ -50,19 +52,39 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
     const n=evaluateCssLength(value,{viewport,percentageBase:base,safeArea});
     return n>=0&&n<=1e6?n:undefined;
   }
+  // Viewport-fixed boxes form independent layout roots. A synthetic definite
+  // viewport parent gives Taffy the CSS containing block for absolute insets.
+  // Transformed/filter ancestors or static-position fallback require a later
+  // containing-block implementation; do not approximate those cases.
+  function fixedGroup(s,parent,n){
+    if(parent?.fixedContainingBlock||n.fixedAncestorOutsideTree)
+      throw Error('Unsupported fixed containing block');
+    for(const [start,end,size] of [['left','right','width'],['top','bottom','height']]){
+      const definite=p=>s[p]!==undefined&&s[p]!=='auto';
+      if(!definite(start)&&!definite(end))throw Error('Unsupported fixed static position: '+size);
+      if(!definite(size)&&!(definite(start)&&definite(end)))throw Error('Unsupported fixed auto size: '+size);
+    }
+    if(['margin-left','margin-right','margin-top','margin-bottom'].some(p=>s[p]==='auto'))
+      throw Error('Unsupported fixed auto margin');
+    if(records.length+fixedGroups.length>=8192)throw Error('Oversized fixed layout forest');
+    const handle=backend.createNode();
+    for(const [p,v] of Object.entries({display:'block',width:viewport.width+'px',height:viewport.height+'px'}))backend.setStyle(handle,p,v);
+    const group={handle,records:[],width:viewport.width,height:viewport.height};
+    fixedGroups.push(group);return group;
+  }
   function cssOrder(n){
     const value=String(n?.style?.order??'0').trim();
     if(!/^[+-]?\d+$/.test(value)||!Number.isSafeInteger(Number(value)))throw Error('Invalid layout order: '+value);
     return Number(value);
   }
   function visit(n,parent,isRoot=false,depth=0){
-    if(depth>128||records.length>=8192||!n?.element||seen.has(n.element))throw Error('Invalid or oversized layout tree');
+    if(depth>128||records.length+fixedGroups.length>=8192||!n?.element||seen.has(n.element))throw Error('Invalid or oversized layout tree');
     seen.add(n.element);
     let s=n.style??{};
     const kids=n.children??[];
     if(!Array.isArray(kids))throw Error('Invalid children');
     const hidden=parent?.hidden||s.display==='none';
-    const record={element:n.element,parent,hidden:!!hidden,handle:null,stableBlock:false,childBases:{}};records.push(record);
+    const record={element:n.element,parent,layoutParent:parent,hidden:!!hidden,handle:null,stableBlock:false,childBases:{},group:parent?.group??null,fixedContainingBlock:!!(parent?.fixedContainingBlock||n.establishesFixedContainingBlock)};records.push(record);
     if(!hidden){
       const textNodes=Array.from(n.element.childNodes??[]).filter(x=>x.nodeType===3&&String(x.textContent??'').trim());
       if(textNodes.length){
@@ -88,12 +110,18 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
       if(record.stableBlock){
         record.childBases={width:definiteSize(s,'width',isRoot,parent),height:definiteSize(s,'height',isRoot,parent)};
       }
+      if(s.position==='fixed'){
+        record.group=fixedGroup(s,parent,n);
+        record.layoutParent=null;
+      }
       record.handle=backend.createNode();
-      if(parent)backend.append(parent.handle,record.handle);
+      if(s.position==='fixed')backend.append(record.group.handle,record.handle);
+      else if(parent)backend.append(parent.handle,record.handle);
+      if(record.group)record.group.records.push(record);
       for(const [p,v] of Object.entries(s)){
         if(p==='order'){cssOrder(n);continue;}
         if(!props.has(p))throw Error('Unmapped layout property '+p);
-        backend.setStyle(record.handle,p,normalize(p,v,isRoot,parent,s));
+        backend.setStyle(record.handle,p,p==='position'&&v==='fixed'?'absolute':normalize(p,v,isRoot,parent,s));
       }
     }
     // CSS order affects flex/grid layout, never the actual DOM order.
@@ -107,12 +135,21 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
   backend.reset();
   try{
     const root=visit(tree,null,true);
-    if(!root.hidden)backend.calculate(root.handle,{width:rootContainingWidth,height:rootContainingHeight});
-    for(const r of records){
-      if(r.hidden){rects.set(r.element,Object.freeze({x:0,y:0,width:0,height:0}));continue;}
-      const local=backend.rect(r.handle),p=r.parent?rects.get(r.parent.element):{x:0,y:0};
+    function capture(r){
+      const local=backend.rect(r.handle),p=r.layoutParent?rects.get(r.layoutParent.element):{x:0,y:0};
       if(![local.x,local.y,local.width,local.height].every(Number.isFinite)||local.width<0||local.height<0)throw Error('Invalid backend geometry');
       rects.set(r.element,Object.freeze({x:p.x+local.x,y:p.y+local.y,width:local.width,height:local.height}));
+    }
+    for(const r of records)if(r.hidden)rects.set(r.element,Object.freeze({x:0,y:0,width:0,height:0}));
+    if(!root.hidden&&!root.group){
+      backend.calculate(root.handle,{width:rootContainingWidth,height:rootContainingHeight});
+      for(const r of records)if(!r.hidden&&!r.group)capture(r);
+    }
+    // Each compute invalidates previous WASM geometry: snapshot each group
+    // completely before computing the next, then publish atomically.
+    for(const g of fixedGroups){
+      backend.calculate(g.handle,{width:g.width,height:g.height});
+      for(const r of g.records)capture(r);
     }
     return Object.freeze({nodeCount:records.length,rect(el){if(!rects.has(el))throw Error('Element not in layout snapshot');return rects.get(el);}});
   }finally{backend.reset();}
