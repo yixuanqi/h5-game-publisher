@@ -12,18 +12,18 @@ export function collectElementPaths(root){
 export function compareRectangles(expected,actual,tolerance=0.5){
  if(!Number.isFinite(tolerance)||tolerance<0)throw Error('Invalid tolerance');
  const keys=['x','y','width','height'];
- const differences=[];
+ const differences=[];let maxDeltaPx=0;
  for(const [path,e] of Object.entries(expected)){
   const a=actual[path];
   if(!a){differences.push({path,reason:'missing'});continue;}
   for(const key of keys){
    if(!Number.isFinite(e[key])||!Number.isFinite(a[key]))throw Error('Invalid geometry '+path+' '+key);
-   const delta=Math.abs(e[key]-a[key]);
+   const delta=Math.abs(e[key]-a[key]);maxDeltaPx=Math.max(maxDeltaPx,delta);
    if(delta>tolerance)differences.push({path,key,delta,expected:e[key],actual:a[key]});
   }
  }
  for(const path of Object.keys(actual))if(!Object.hasOwn(expected,path))differences.push({path,reason:'unexpected'});
- return {pass:differences.length===0,differences};
+ return {pass:differences.length===0,differences,maxDeltaPx};
 }
 
 // HTML parsing adjusts these SVG tag names to their canonical mixed case.
@@ -37,4 +37,24 @@ export function elementIdentity({path,namespaceURI,tag,id=''}){
  // case changes or non-SVG namespace mismatches.
  const canonical=namespaceURI===SVG_NS?svgAdjustedNames.get(tag):undefined;
  return [path,namespaceURI,canonical??tag,id];
+}
+
+// Scope is the pinned authored, settled mobile title. Geometry is independent
+// from visual, animation, interaction and native-font parity.
+export function assertStaticTitleGeometry(results){
+ if(!Array.isArray(results)||results.length!==2)throw Error('Expected two title viewports');
+ const expectedViewports=new Set(['844x390','640x360']);
+ for(const r of results){
+  const key=r.viewport.width+'x'+r.viewport.height;
+  if(!expectedViewports.delete(key)||r.nodeCount!==61||r.oracle?.length!==61||r.inventory?.length!==61||
+     r.attempt?.status!=='computed'||Object.keys(r.attempt.actual??{}).length!==61||
+     r.textEvidence?.descriptorErrors?.length!==0||r.textEvidence?.used?.length!==13||
+     new Set(r.textEvidence.used).size!==13||r.textEvidence.measured?.length!==13||
+     r.issues?.some(x=>['selector','cascade'].includes(x.kind)))
+   throw Error('Incomplete title geometry evidence '+key);
+  const expected=Object.fromEntries(r.oracle.map(x=>[x.path,x.rect]));
+  if(Object.keys(expected).length!==61)throw Error('Duplicate oracle path '+key);
+  const comparison=compareRectangles(expected,r.attempt.actual,0.5);
+  if(!comparison.pass)throw Error('Static title geometry exceeds 0.5px '+key+' max='+comparison.maxDeltaPx+' differences='+comparison.differences.length);
+ }
 }
