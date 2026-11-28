@@ -198,9 +198,23 @@ function stackMeta(n,parent){
  const special=context||position!=='static';
  return {position,opacity,transformed,context,special,level,phase:level<0?0:!special?1:level===0?2:3};
 }
-export function buildBoxPaintList(tree,snapshot,{stacking=false}={}){
+export function buildBoxPaintList(tree,snapshot,{stacking=false,crossAncestor=false}={}){
+ if(crossAncestor&&!stacking)throw Error('Cross-ancestor paint requires stacking mode');
  const commands=[],seen=new Set();
- function visit(n,depth,target,parent=null,ancestor={transformed:false,clipped:false}){
+ let sequence=0,fragmentBudget=0;
+ // A fragment belongs to its nearest actual stacking context. Its original
+ // ancestor clips travel with it, not with the sibling it is sorted beside.
+ function emit(scope,phase,level,body,clips){
+  if(!body.length)return;
+  fragmentBudget+=body.length+2*clips.length;
+  if(fragmentBudget>65536)throw Error('Oversized stacking fragments');
+  scope.push({phase,level,sequence:sequence++,commands:[...clips,...body,...clips.map(()=>({op:'popClip'}))]});
+ }
+ function orderedFragments(scope){
+  scope.sort((a,b)=>a.phase-b.phase||a.level-b.level||a.sequence-b.sequence);
+  return scope.flatMap(f=>f.commands);
+ }
+ function visit(n,depth,target,parent=null,ancestor={transformed:false,clipped:false},scope=null,inheritedPhase=1,clips=[]){
   const commands=[];
   if(depth>128||seen.size>=8192||!n?.element||seen.has(n.element)||!Array.isArray(n.children??[]))throw Error('Invalid paint tree');
   seen.add(n.element);
@@ -244,8 +258,35 @@ export function buildBoxPaintList(tree,snapshot,{stacking=false}={}){
     strips.forEach((rect,i)=>{if(border.widths[i])commands.push({op:'fill',rect,radius:0,color:border.colors[i]});});
    }
   }
-  if(ox==='hidden')commands.push({op:'pushClip',rect:border.inner,radius:border.innerRadius});
   const kids=n.children??[];
+  if(crossAncestor){
+   const clip=ox==='hidden'?{op:'pushClip',rect:border.inner,radius:border.innerRadius}:null;
+   const nextAncestor={transformed:ancestor.transformed||meta.transformed,clipped:ancestor.clipped||!!clip};
+   if(depth===0||meta.context){
+    // The root is a closed painting scope. Requiring an explicit context
+    // prevents silently treating an arbitrary document fragment as a root.
+    if(depth===0&&!meta.context)throw Error('Cross-ancestor paint requires explicit root context');
+    const local=[];
+    for(const child of kids)visit(child,depth+1,null,n,nextAncestor,local,1,[]);
+    if(clip)commands.push(clip);
+    commands.push(...orderedFragments(local));
+    if(clip)commands.push({op:'popClip'});
+    const body=meta.opacity<1||meta.transformed?
+     [{op:'group',opacity:meta.opacity,matrix:transformMatrix(s.transform,r,s['transform-origin']),commands}]:commands;
+    if(depth===0)target.push(...body);
+    else emit(scope,meta.phase,meta.level,body,clips);
+   }else{
+    // Positioned auto-z boxes are not true stacking contexts. Their own
+    // normal-flow content paints in phase 2, but positioned descendants and
+    // real contexts continue to participate in the nearest real context.
+    const phase=meta.special?2:inheritedPhase;
+    emit(scope,phase,0,commands,clips);
+    const nextClips=clip?[...clips,clip]:clips;
+    for(const child of kids)visit(child,depth+1,null,n,nextAncestor,scope,phase,nextClips);
+   }
+   return;
+  }
+  if(ox==='hidden')commands.push({op:'pushClip',rect:border.inner,radius:border.innerRadius});
   const ordered=stacking?kids.map((child,index)=>({child,index,meta:child.style?.display==='none'?null:stackMeta(child,n)})):
    kids.map((child,index)=>({child,index,meta:null}));
   if(stacking){
