@@ -10,12 +10,13 @@ import {compileRuntimeCssPlan} from '../original-entry/css-plan-build.mjs';
 import {resolvePlanStyle} from '../runtime/css-plan-runtime.mjs';
 import {createLayoutSnapshot} from './dom-layout.mjs';
 import {directTextRun,textDescriptor} from './text-metrics.mjs';
+import {measureHostFontRuns} from './host-font-probe.mjs';
 import {collectElementPaths,compareRectangles,elementIdentity} from './title-audit-utils.mjs';
 const {loadTaffy}=createRequire(import.meta.url)('./taffy-runtime.cjs');
 const [checkout,wasm,out]=process.argv.slice(2);
 const pin='cdb508594cc610733f248ec5d4123a3b9d954981';
 const git=(...args)=>{const r=spawnSync('git',args,{cwd:checkout,encoding:'utf8'});assert.equal(r.status,0,r.stderr);return r.stdout.trim();};
-const report={stage:'V0.5.4c3b6',scope:'full authored title subtree settled static mobile state, vector geometry and host layout',sourceSha:pin,diagnostic:'fail',fullTitleParity:false,oracleMotionPolicy:'settled-no-animation-or-transition',wx:'not-run',releaseReady:false,results:[]};
+const report={stage:'V0.5.4c3b7',scope:'full authored title subtree settled static mobile state, vector geometry and host layout',sourceSha:pin,diagnostic:'fail',fullTitleParity:false,oracleMotionPolicy:'settled-no-animation-or-transition',wx:'not-run',releaseReady:false,results:[]};
 let browser,server;
 try{
  assert.equal(git('rev-parse','HEAD'),pin);
@@ -123,16 +124,9 @@ try{
    try{descriptors.push({path:row.path,...textDescriptor(text,row.textStyle,env)});}
    catch(e){descriptorErrors.push({path:row.path,error:String(e)});}
   }
-  const measured=await page.evaluate(ds=>{
-   const c=document.createElement('canvas').getContext('2d');
-   return ds.map(d=>{
-    c.font=d.font;c.letterSpacing=d.letterSpacing+'px';
-    const m=c.measureText(d.text);
-    return {path:d.path,width:m.width,height:d.lineHeight??(m.fontBoundingBoxAscent+m.fontBoundingBoxDescent)};
-   });
-  },descriptors);
+  const measured=await measureHostFontRuns(ctx,descriptors);
   const metricsByPath=new Map(measured.map(x=>[x.path,x]));
-  const textEvidence={descriptors,descriptorErrors,measured,used:[]};
+  const textEvidence={provider:'host-canvas-font-extents-plus-neutral-cdp-font-identities',descriptors,descriptorErrors,measured,used:[]};
   const expected=Object.fromEntries(oracle.map(x=>[x.path,x.rect]));
   let attempt;
   try{
@@ -157,5 +151,5 @@ try{
 finally{
  try{assert.equal(git('status','--porcelain','--untracked-files=all'),'');report.sourceIntegrity='pass';}
  catch(e){report.sourceIntegrity='fail';report.diagnostic='fail';report.sourceError=String(e);throw e;}
- finally{if(browser)await browser.close();if(server)await new Promise(ok=>server.close(ok));fs.writeFileSync(out,JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({stage:report.stage,diagnostic:report.diagnostic,fullTitleParity:report.fullTitleParity,sourceIntegrity:report.sourceIntegrity,results:report.results.map(r=>({viewport:r.viewport,nodeCount:r.nodeCount,issues:r.issues.length,attempt:r.attempt.status,error:r.attempt.error,measuredTextRuns:r.textEvidence.measured.length,usedTextRuns:r.textEvidence.used.length,geometryDifferences:r.attempt.differences?.length??null,maxDeltaPx:r.attempt.differences?Math.max(0,...r.attempt.differences.map(d=>d.delta??0)):null,splitTextRuns:r.issues.filter(i=>i.kind==='text-measurement-required'&&i.textNodeCount>1&&i.logicalRun).map(i=>({path:i.path,textNodeCount:i.textNodeCount})),issueKinds:Object.fromEntries([...new Set(r.issues.map(i=>i.kind))].map(k=>[k,r.issues.filter(i=>i.kind===k).length])),issueProperties:[...new Set(r.issues.flatMap(i=>i.properties??[]))]}))}));}
+ finally{if(browser)await browser.close();if(server)await new Promise(ok=>server.close(ok));fs.writeFileSync(out,JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({stage:report.stage,diagnostic:report.diagnostic,fullTitleParity:report.fullTitleParity,sourceIntegrity:report.sourceIntegrity,results:report.results.map(r=>({viewport:r.viewport,nodeCount:r.nodeCount,issues:r.issues.length,attempt:r.attempt.status,error:r.attempt.error,measuredTextRuns:r.textEvidence.measured.length,usedTextRuns:r.textEvidence.used.length,geometryDifferences:r.attempt.differences?.length??null,fontExtents:r.textEvidence.measured.map(m=>({path:m.path,height:m.height,primaryHeight:m.primaryHeight,fonts:m.fallbacks.map(f=>f.familyName),widthCandidates:m.widthCandidates})),maxDeltaPx:r.attempt.differences?Math.max(0,...r.attempt.differences.map(d=>d.delta??0)):null,splitTextRuns:r.issues.filter(i=>i.kind==='text-measurement-required'&&i.textNodeCount>1&&i.logicalRun).map(i=>({path:i.path,textNodeCount:i.textNodeCount})),issueKinds:Object.fromEntries([...new Set(r.issues.map(i=>i.kind))].map(k=>[k,r.issues.filter(i=>i.kind===k).length])),issueProperties:[...new Set(r.issues.flatMap(i=>i.properties??[]))]}))}));}
 }
