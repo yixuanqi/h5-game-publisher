@@ -1,0 +1,5 @@
+# V0.5.4c2 — definite nested constraints and word wrapping
+
+Base: 96d4778 (green c1 run 46099428528, 38 JS cases). Preserve all existing gates. Resolve mixed percentages only when explicit content-box dimensions propagate through normal block flow. Unknown, constrained, border-box, flex/grid and out-of-flow bases remain fail-closed. Inject a content measurement callback with a definite width for normal ASCII word wrapping; preserve authored width and backend box edges. No layout rectangle from the oracle may enter adapter computation.
+
+Four additional unit tests and an independent Chromium/Taffy nested-block comparison at 640x390 and 844x390, before/after parent resizing. Check every selected rectangle against 0.5px and require changed line count. Browser Canvas supplies only glyph advances. Preserve source pin and b3/c1 checks. Scope is synthetic geometry, not full original menu, Unicode line breaking, rich inline layout, native WXWebAssembly, or release readiness. Main and game remain untouched. CI determines status.

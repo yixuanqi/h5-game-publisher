@@ -6,7 +6,7 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
   const props=new Set('display width height min-width min-height max-width max-height column-gap row-gap flex-direction flex-wrap justify-content align-items align-self flex-grow flex-shrink flex-basis grid-template-columns grid-template-rows position top right bottom left padding-top padding-right padding-bottom padding-left margin-top margin-right margin-bottom margin-left border-top-width border-right-width border-bottom-width border-left-width box-sizing aspect-ratio grid-column-start grid-column-end grid-row-start grid-row-end'.split(' '));
   const lengthProps=/^(?:width|height|min-width|min-height|max-width|max-height|column-gap|row-gap|flex-basis|top|right|bottom|left|padding-(?:top|right|bottom|left)|margin-(?:top|right|bottom|left)|border-(?:top|right|bottom|left)-width)$/;
   if(![viewport.width,viewport.height,rootContainingWidth,rootContainingHeight].every(n=>Number.isFinite(n)&&n>=0&&n<=1e6))throw Error('Invalid layout viewport');
-  function normalize(p,v,isRoot){
+  function normalize(p,v,isRoot,parent,style={}){
     if(typeof v!=='string')throw Error('Invalid style '+p);
     v=v.trim();
     if(lengthProps.test(p)){
@@ -16,12 +16,12 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
       const unit=v.match(/^(-?(?:\d+(?:\.\d+)?|\.\d+))(vw|vh|dvw|dvh)$/);
       if(unit)return Number(unit[1])*(unit[2].endsWith('vw')?viewport.width:viewport.height)/100+'px';
       if(/\b(?:min|max|clamp|calc|env|var)\s*\(/.test(v)){
-        // Only the external root containing block is definite at this stage.
-        // Descendants keep native plain percentages; mixed expressions with
-        // unknown bases fail rather than using a stale or guessed parent size.
         const vertical=/^(?:height|min-height|max-height|top|bottom)$/.test(p);
+        const normalFlow=!style.position||['static','relative'].includes(style.position);
+        const nestedProperty=/^(?:width|height|min-width|min-height|max-width|max-height|padding-|margin-)/.test(p);
         const percentageBase=isRoot&&!/^(?:flex-basis|column-gap|row-gap|border-)/.test(p)
-          ? (vertical?rootContainingHeight:rootContainingWidth):undefined;
+          ? (vertical?rootContainingHeight:rootContainingWidth)
+          : normalFlow&&nestedProperty?parent?.childBases?.[vertical?'height':'width']:undefined;
         const px=evaluateCssLength(v,{viewport,percentageBase,safeArea});
         if(px<0&&!/^(?:top|right|bottom|left|margin-)/.test(p))throw Error('Negative resolved length '+p);
         return px+'px';
@@ -29,6 +29,26 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
     }
     if(p==='aspect-ratio'){const m=v.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);if(m&&Number(m[2])>0)return String(Number(m[1])/Number(m[2]));}
     return v;
+  }
+  // Only propagate explicit content-box dimensions in normal block flow.
+  // Flex/grid tracks, auto sizing, constraints and out-of-flow boxes need the
+  // actual backend containing block, never a guessed viewport.
+  function stableBlock(s,parent,isRoot){
+    return (!s.display||s.display==='block')&&(!s.position||['static','relative'].includes(s.position))&&
+      (!s['box-sizing']||s['box-sizing']==='content-box')&&
+      (!s['aspect-ratio']||s['aspect-ratio']==='auto')&&
+      (isRoot||parent?.stableBlock===true);
+  }
+  function definiteSize(s,axis,isRoot,parent){
+    if(!s[axis]||s[axis]==='auto'||
+       (s['min-'+axis]&&s['min-'+axis]!=='auto')||
+       (s['max-'+axis]&&!['auto','none'].includes(s['max-'+axis])))return undefined;
+    const value=normalize(axis,s[axis],isRoot,parent,s);
+    const base=isRoot?(axis==='width'?rootContainingWidth:rootContainingHeight):parent?.childBases?.[axis];
+    if(!/^(?:[+-]?(?:\d+(?:\.\d*)?|\.\d+))(?:px|%)$/.test(value))return undefined;
+    if(value.endsWith('%')&&!Number.isFinite(base))return undefined;
+    const n=evaluateCssLength(value,{viewport,percentageBase:base,safeArea});
+    return n>=0&&n<=1e6?n:undefined;
   }
   function cssOrder(n){
     const value=String(n?.style?.order??'0').trim();
@@ -42,28 +62,38 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
     const kids=n.children??[];
     if(!Array.isArray(kids))throw Error('Invalid children');
     const hidden=parent?.hidden||s.display==='none';
-    const record={element:n.element,parent,hidden:!!hidden,handle:null};records.push(record);
+    const record={element:n.element,parent,hidden:!!hidden,handle:null,stableBlock:false,childBases:{}};records.push(record);
     if(!hidden){
       const textNodes=Array.from(n.element.childNodes??[]).filter(x=>x.nodeType===3&&String(x.textContent??'').trim());
       if(textNodes.length){
-        // V0.5.4c1 contract: a measured, non-wrapping content-box leaf only.
-        // The injected provider supplies text metrics, not browser box geometry.
+        const whiteSpace=n.textStyle?.['white-space']??'normal';
+        const intrinsic=s.width==='max-content'&&whiteSpace==='nowrap';
+        const constrained=whiteSpace==='normal'&&stableBlock(s,parent,isRoot)&&
+          !['min-width','max-width','min-height','max-height'].some(p=>s[p]&&!['auto','none'].includes(s[p]));
         if(typeof measureTextLeaf!=='function'||kids.length||textNodes.length!==1||
-           s.width!=='max-content'||(s.height&&s.height!=='auto')||
+           (s.height&&s.height!=='auto')||
            (s['box-sizing']&&s['box-sizing']!=='content-box')||
-           (s.display&&s.display!=='block')||n.textStyle?.['white-space']!=='nowrap')
+           (s.display&&s.display!=='block')||(!intrinsic&&!constrained))
           throw Error('Intrinsic text measurement required: unsupported text leaf');
+        const maxWidth=constrained?definiteSize(s,'width',isRoot,parent):undefined;
+        if(constrained&&!Number.isFinite(maxWidth))throw Error('Unresolved text width constraint');
         const text=String(textNodes[0].textContent).replace(/[\t\n\f\r ]+/g,' ').trim();
-        const metrics=measureTextLeaf({element:n.element,text,style:n.textStyle,viewport});
+        const metrics=measureTextLeaf({element:n.element,text,style:n.textStyle,viewport,maxWidth});
         if(![metrics?.width,metrics?.height].every(v=>Number.isFinite(v)&&v>=0&&v<=1e6))throw Error('Invalid text metrics');
-        s={...s,width:metrics.width+'px',height:metrics.height+'px'};
+        // The provider measures content, not the containing box. Preserve the
+        // authored width for wrapping text; Taffy still owns padding/borders.
+        s={...s,...(intrinsic?{width:metrics.width+'px'}:{}),height:metrics.height+'px'};
+      }
+      record.stableBlock=stableBlock(s,parent,isRoot);
+      if(record.stableBlock){
+        record.childBases={width:definiteSize(s,'width',isRoot,parent),height:definiteSize(s,'height',isRoot,parent)};
       }
       record.handle=backend.createNode();
       if(parent)backend.append(parent.handle,record.handle);
       for(const [p,v] of Object.entries(s)){
         if(p==='order'){cssOrder(n);continue;}
         if(!props.has(p))throw Error('Unmapped layout property '+p);
-        backend.setStyle(record.handle,p,normalize(p,v,isRoot));
+        backend.setStyle(record.handle,p,normalize(p,v,isRoot,parent,s));
       }
     }
     // CSS order affects flex/grid layout, never the actual DOM order.
