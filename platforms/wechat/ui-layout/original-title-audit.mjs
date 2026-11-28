@@ -15,7 +15,7 @@ const {loadTaffy}=createRequire(import.meta.url)('./taffy-runtime.cjs');
 const [checkout,wasm,out]=process.argv.slice(2);
 const pin='cdb508594cc610733f248ec5d4123a3b9d954981';
 const git=(...args)=>{const r=spawnSync('git',args,{cwd:checkout,encoding:'utf8'});assert.equal(r.status,0,r.stderr);return r.stdout.trim();};
-const report={stage:'V0.5.4c3b5',scope:'full authored title subtree static mobile state, inventory and attempted host geometry',sourceSha:pin,diagnostic:'fail',fullTitleParity:false,wx:'not-run',releaseReady:false,results:[]};
+const report={stage:'V0.5.4c3b6',scope:'full authored title subtree settled static mobile state, vector geometry and host layout',sourceSha:pin,diagnostic:'fail',fullTitleParity:false,oracleMotionPolicy:'settled-no-animation-or-transition',wx:'not-run',releaseReady:false,results:[]};
 let browser,server;
 try{
  assert.equal(git('rev-parse','HEAD'),pin);
@@ -48,6 +48,10 @@ try{
   await ctx.route('**/*',r=>new URL(r.request().url()).origin===origin?r.continue():r.abort());
   const page=await ctx.newPage();
   await page.goto(origin+'/',{waitUntil:'load',timeout:30000});
+  // Static settled-state geometry: suppress time-dependent CSS motion in
+  // the browser oracle only, before applying the same revealed class.
+  // This is NOT an animation/transition parity test; source files stay intact.
+  await page.addStyleTag({content:'*,*::before,*::after{animation:none!important;transition:none!important}'});
   // Diagnostic state only, identical class edits in both in-memory DOMs.
   await page.evaluate(()=>{document.body.classList.add('is-mobile');document.querySelector('#title-screen').classList.add('title-revealed');});
   await page.evaluate(()=>document.fonts.ready.then(()=>true));
@@ -153,5 +157,5 @@ try{
 finally{
  try{assert.equal(git('status','--porcelain','--untracked-files=all'),'');report.sourceIntegrity='pass';}
  catch(e){report.sourceIntegrity='fail';report.diagnostic='fail';report.sourceError=String(e);throw e;}
- finally{if(browser)await browser.close();if(server)await new Promise(ok=>server.close(ok));fs.writeFileSync(out,JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({stage:report.stage,diagnostic:report.diagnostic,fullTitleParity:report.fullTitleParity,sourceIntegrity:report.sourceIntegrity,results:report.results.map(r=>({viewport:r.viewport,nodeCount:r.nodeCount,issues:r.issues.length,attempt:r.attempt.status,error:r.attempt.error,measuredTextRuns:r.textEvidence.measured.length,usedTextRuns:r.textEvidence.used.length,splitTextRuns:r.issues.filter(i=>i.kind==='text-measurement-required'&&i.textNodeCount>1&&i.logicalRun).map(i=>({path:i.path,textNodeCount:i.textNodeCount})),issueKinds:Object.fromEntries([...new Set(r.issues.map(i=>i.kind))].map(k=>[k,r.issues.filter(i=>i.kind===k).length])),issueProperties:[...new Set(r.issues.flatMap(i=>i.properties??[]))]}))}));}
+ finally{if(browser)await browser.close();if(server)await new Promise(ok=>server.close(ok));fs.writeFileSync(out,JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({stage:report.stage,diagnostic:report.diagnostic,fullTitleParity:report.fullTitleParity,sourceIntegrity:report.sourceIntegrity,results:report.results.map(r=>({viewport:r.viewport,nodeCount:r.nodeCount,issues:r.issues.length,attempt:r.attempt.status,error:r.attempt.error,measuredTextRuns:r.textEvidence.measured.length,usedTextRuns:r.textEvidence.used.length,geometryDifferences:r.attempt.differences?.length??null,maxDeltaPx:r.attempt.differences?Math.max(0,...r.attempt.differences.map(d=>d.delta??0)):null,splitTextRuns:r.issues.filter(i=>i.kind==='text-measurement-required'&&i.textNodeCount>1&&i.logicalRun).map(i=>({path:i.path,textNodeCount:i.textNodeCount})),issueKinds:Object.fromEntries([...new Set(r.issues.map(i=>i.kind))].map(k=>[k,r.issues.filter(i=>i.kind===k).length])),issueProperties:[...new Set(r.issues.flatMap(i=>i.properties??[]))]}))}));}
 }

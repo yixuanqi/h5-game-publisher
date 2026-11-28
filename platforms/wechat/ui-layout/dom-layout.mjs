@@ -1,9 +1,10 @@
 /** Bounded geometry adapter. No painting or game-specific selectors. */
 import {evaluateCssLength} from './css-length.mjs';
 import {validateSingleLineMetrics,directTextRun} from './text-metrics.mjs';
+import {SVG_NS,svgDescendantRects} from './svg-geometry.mjs';
 export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=viewport.width,rootContainingHeight=viewport.height,safeArea,measureTextLeaf,measureSingleLine}={}){
   // Bounded static geometry; publish only after the complete tree computes.
-  const rects=new Map(),records=[],seen=new Set(),fixedGroups=[];
+  const rects=new Map(),records=[],seen=new Set(),fixedGroups=[],svgRoots=[];
   const props=new Set('display width height min-width min-height max-width max-height column-gap row-gap flex-direction flex-wrap justify-content align-items align-self flex-grow flex-shrink flex-basis grid-template-columns grid-template-rows position top right bottom left padding-top padding-right padding-bottom padding-left margin-top margin-right margin-bottom margin-left border-top-width border-right-width border-bottom-width border-left-width box-sizing aspect-ratio grid-column-start grid-column-end grid-row-start grid-row-end'.split(' '));
   const lengthProps=/^(?:width|height|min-width|min-height|max-width|max-height|column-gap|row-gap|flex-basis|top|right|bottom|left|padding-(?:top|right|bottom|left)|margin-(?:top|right|bottom|left)|border-(?:top|right|bottom|left)-width)$/;
   if(![viewport.width,viewport.height,rootContainingWidth,rootContainingHeight].every(n=>Number.isFinite(n)&&n>=0&&n<=1e6))throw Error('Invalid layout viewport');
@@ -183,9 +184,21 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
     const kids=n.children??[];
     if(!Array.isArray(kids))throw Error('Invalid children');
     const hidden=parent?.hidden||s.display==='none';
+    // SVG descendants are vector geometry, never ordinary CSS boxes.
+    const vectorOwner=parent?.vectorOwner??(parent?.svgRoot?parent:null);
+    if(vectorOwner&&!hidden){
+      const record={element:n.element,parent,hidden:false,vectorOwner};records.push(record);
+      for(const child of kids)visit(child,record,false,depth+1);
+      return record;
+    }
     const record={element:n.element,parent,layoutParent:parent,hidden:!!hidden,handle:null,stableBlock:false,childBases:{},group:parent?.group??null,fixedContainingBlock:!!(parent?.fixedContainingBlock||n.establishesFixedContainingBlock)};records.push(record);
     if(!hidden){
       s=fillRoot(blockify(s,parent,isRoot,n,kids),isRoot,parent);
+      if(n.element.namespaceURI===SVG_NS){
+        if(n.element.localName!=='svg')throw Error('SVG node outside vector root');
+        if(textBoxEdges(s,isRoot,parent).x!==0||textBoxEdges(s,isRoot,parent).y!==0)throw Error('Unsupported SVG box edges');
+        record.svgRoot=true;svgRoots.push(record);
+      }
       const textNodes=Array.from(n.element.childNodes??[]).filter(x=>x.nodeType===3&&/[^\t\n\f\r ]/.test(String(x.textContent??'')));
       if(textNodes.length){
         const text=directTextRun(n.element);
@@ -259,7 +272,7 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
     for(const r of records)if(r.hidden)rects.set(r.element,Object.freeze({x:0,y:0,width:0,height:0}));
     if(!root.hidden&&!root.group){
       backend.calculate(root.handle,{width:rootContainingWidth,height:rootContainingHeight});
-      for(const r of records)if(!r.hidden&&!r.group)capture(r);
+      for(const r of records)if(!r.hidden&&!r.group&&!r.vectorOwner)capture(r);
     }
     // Each compute invalidates previous WASM geometry: snapshot each group
     // completely before computing the next, then publish atomically.
@@ -267,6 +280,11 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
       backend.calculate(g.handle,{width:g.width,height:g.height});
       for(const r of g.records)capture(r);
     }
+    for(const r of svgRoots){
+      const geometry=svgDescendantRects(r.element,rects.get(r.element));
+      for(const [element,rect] of geometry){if(!seen.has(element))throw Error('SVG geometry outside layout tree');if(!rects.has(element))rects.set(element,Object.freeze(rect));}
+    }
+    for(const r of records)if(!rects.has(r.element))throw Error('Missing layout geometry');
     return Object.freeze({nodeCount:records.length,rect(el){if(!rects.has(el))throw Error('Element not in layout snapshot');return rects.get(el);}});
   }finally{backend.reset();}
 }
