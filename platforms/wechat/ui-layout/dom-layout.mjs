@@ -113,6 +113,64 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
     const mapped={'inline':'block','inline-block':'block','inline-flex':'flex','inline-grid':'grid'}[display];
     return {...s,display:mapped};
   }
+  function resolvedEdge(s,p,isRoot,parent){
+    const raw=s[p]??'0px';
+    if(raw==='auto')return undefined;
+    const normalized=normalize(p,raw,isRoot,parent,s);
+    if(!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:px|%)$/.test(normalized))return undefined;
+    const base=isRoot?rootContainingWidth:parent?.childBases?.width;
+    if(normalized.endsWith('%')&&!Number.isFinite(base))return undefined;
+    const n=evaluateCssLength(normalized,{viewport,percentageBase:base,safeArea});
+    return Number.isFinite(n)?n:undefined;
+  }
+  function edgeSum(s,props,isRoot,parent){
+    const values=props.map(p=>resolvedEdge(s,p,isRoot,parent));
+    return values.every(Number.isFinite)?values.reduce((a,b)=>a+b,0):undefined;
+  }
+  function fillRoot(s,isRoot,parent){
+    if(!isRoot||s.position!=='absolute')return s;
+    let out=s;
+    for(const [axis,first,last,bound] of [['width','left','right',rootContainingWidth],['height','top','bottom',rootContainingHeight]]){
+      if(s[axis]&&s[axis]!=='auto')continue;
+      if(![first,last].every(k=>s[k]!==undefined&&normalize(k,s[k],true,parent,s)==='0px'))continue;
+      const margins=edgeSum(s,['margin-'+first,'margin-'+last],true,parent);
+      if(margins!==0||['margin-'+first,'margin-'+last].some(k=>resolvedEdge(s,k,true,parent)!==0))continue;
+      const edges=edgeSum(s,['padding-'+first,'padding-'+last,'border-'+first+'-width','border-'+last+'-width'],true,parent);
+      if(!Number.isFinite(edges)||edges<0)continue;
+      out={...out,[axis]:Math.max(0,bound-(s['box-sizing']==='border-box'?0:edges))+'px'};
+    }
+    return out;
+  }
+  // Prove the content inline size independently of actual Taffy results.
+  // A column flex item's cross size is independent of main-axis flexing;
+  // a row item or grid track's size is not assumed from its authored width.
+  function definiteContentWidth(s,parent,isRoot){
+    if(s.position==='fixed'||(!isRoot&&s.position==='absolute')||
+       (s['aspect-ratio']&&s['aspect-ratio']!=='auto')||
+       (s['min-width']&&!['auto','0','0px'].includes(s['min-width']))||
+       (s['max-width']&&!['auto','none'].includes(s['max-width']))||
+       !['block','flex','grid',undefined].includes(s.display))return undefined;
+    const ps=parent?.style??{};
+    const column=ps.display==='flex'&&['column','column-reverse'].includes(ps['flex-direction'])&&(!ps['flex-wrap']||ps['flex-wrap']==='nowrap');
+    if(!isRoot&&(!parent||ps.display==='grid'||(ps.display==='flex'&&!column)))return undefined;
+    if(!isRoot&&(!Number.isFinite(parent.childBases?.width)))return undefined;
+    const edges=edgeSum(s,['padding-left','padding-right','border-left-width','border-right-width'],isRoot,parent);
+    if(!Number.isFinite(edges)||edges<0)return undefined;
+    const value=s.width??'auto';
+    if(value==='auto'){
+      if(!column)return undefined;
+      const align=s['align-self']==='auto'||!s['align-self']?(ps['align-items']??'stretch'):s['align-self'];
+      if(!['stretch','normal'].includes(align))return undefined;
+      const margins=edgeSum(s,['margin-left','margin-right'],isRoot,parent);
+      if(!Number.isFinite(margins))return undefined;
+      return Math.max(0,parent.childBases.width-margins-edges);
+    }
+    const v=normalize('width',value,isRoot,parent,s);
+    if(!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:px|%)$/.test(v))return undefined;
+    const w=evaluateCssLength(v,{viewport,percentageBase:isRoot?rootContainingWidth:parent.childBases.width,safeArea});
+    if(w<0||w>1e6)return undefined;
+    return Math.max(0,w-(s['box-sizing']==='border-box'?edges:0));
+  }
   function cssOrder(n){
     const value=String(n?.style?.order??'0').trim();
     if(!/^[+-]?\d+$/.test(value)||!Number.isSafeInteger(Number(value)))throw Error('Invalid layout order: '+value);
@@ -127,7 +185,7 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
     const hidden=parent?.hidden||s.display==='none';
     const record={element:n.element,parent,layoutParent:parent,hidden:!!hidden,handle:null,stableBlock:false,childBases:{},group:parent?.group??null,fixedContainingBlock:!!(parent?.fixedContainingBlock||n.establishesFixedContainingBlock)};records.push(record);
     if(!hidden){
-      s=blockify(s,parent,isRoot,n,kids);
+      s=fillRoot(blockify(s,parent,isRoot,n,kids),isRoot,parent);
       const textNodes=Array.from(n.element.childNodes??[]).filter(x=>x.nodeType===3&&String(x.textContent??'').trim());
       if(textNodes.length){
         const whiteSpace=n.textStyle?.['white-space']??'normal';
@@ -158,6 +216,12 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
       record.stableBlock=stableBlock(s,parent,isRoot);
       if(record.stableBlock){
         record.childBases={width:definiteSize(s,'width',isRoot,parent),height:definiteSize(s,'height',isRoot,parent)};
+      }
+      // Grid percentages use track area, not container width. Preserve the
+      // legacy fail-closed grid policy even for definite grid containers.
+      if(s.display!=='grid'){
+        const width=definiteContentWidth(s,parent,isRoot);
+        if(Number.isFinite(width))record.childBases.width=width;
       }
       if(s.position==='fixed'){
         record.group=fixedGroup(s,parent,n);
