@@ -20,7 +20,7 @@ function flex(value){
   if(a.length===3&&/^\d+(?:\.\d+)?$/.test(a[0])&&/^\d+(?:\.\d+)?$/.test(a[1]))return [['flex-grow',a[0]],['flex-shrink',a[1]],['flex-basis',a[2]]];
   throw Error('Unsupported flex shorthand: '+value);
 }
-export function expandRuntimeDeclaration(prop,value){
+export function expandRuntimeDeclaration(prop,value,{paint=false}={}){
   prop=String(prop).trim().toLowerCase();value=String(value).trim();
   if(!prop||!value)return [];
   if(prop.startsWith('--'))return [[prop,value]];
@@ -41,12 +41,27 @@ export function expandRuntimeDeclaration(prop,value){
     if(!direction&&!wrap)throw Error('Unsupported flex-flow: '+value);
     return [...(direction?[['flex-direction',direction]]:[]),...(wrap?[['flex-wrap',wrap]]:[])];
   }
+  if(paint){
+    const sides=['top','right','bottom','left'];
+    const m=prop.match(/^border(?:-(top|right|bottom|left))?$/);
+    if(m){
+      const parts=splitTop(value),styles=['none','hidden','solid','dotted','dashed','double','groove','ridge','inset','outset'];
+      const st=parts.find(x=>styles.includes(x))??'none';
+      const width=parts.find(x=>/^(?:0|\d+(?:\.\d+)?px|thin|medium|thick)$/.test(x));
+      const other=parts.filter(x=>x!==st&&x!==width);
+      if(other.length>1)throw Error('Unsupported border shorthand '+value);
+      const c=other[0]??'currentColor';
+      return [...expandBox(prop,value),...(m[1]?[m[1]]:sides).flatMap(side=>[['border-'+side+'-style',st],['border-'+side+'-color',c]])];
+    }
+    if(['border-color','border-style'].includes(prop))return four(value).map((v,i)=>['border-'+sides[i]+'-'+prop.slice(7),v]);
+    if(/^border-(top|right|bottom|left)-(color|style)$/.test(prop)||['box-shadow','background-image','background-clip','background-origin','background-size','background-repeat','background-position','filter','backdrop-filter'].includes(prop))return [[prop,value]];
+  }
   const box=expandBox(prop,value);
   if(box.length)return box;
   return runtimeProperties.has(prop)?[[prop,value]]:[];
 }
 
-export function parseInlineDeclarations(cssText){
+export function parseInlineDeclarations(cssText,options={}){
   const text=String(cssText??''),parts=[];let start=0,depth=0,quote='';
   for(let i=0;i<=text.length;i++){
     const ch=text[i]??';';
@@ -69,7 +84,7 @@ export function parseInlineDeclarations(cssText){
     }
     if(colon<1)continue;
     const prop=part.slice(0,colon).trim(),raw=part.slice(colon+1).trim(),important=/\s*!important\s*$/i.test(raw),value=raw.replace(/\s*!important\s*$/i,'').trim();
-    for(const [p,v] of expandRuntimeDeclaration(prop,value))out.push({prop:p,value:v,important});
+    for(const [p,v] of expandRuntimeDeclaration(prop,value,options))out.push({prop:p,value:v,important});
   }
   return out;
 }

@@ -5,7 +5,7 @@ import {classifyPseudoElement} from './pseudo-element-policy.mjs';
 
 const allowedAtRules=new Set(['keyframes','-webkit-keyframes','font-face','charset']);
 
-export function compileRuntimeCssPlan(css){
+export function compileRuntimeCssPlan(css,{paint=false}={}){
   const root=postcss.parse(String(css)),rules=[],skippedPseudoElements=[],deferredPseudoRules=[];let order=0;
   function visit(nodes,media=[]){
     for(const node of nodes){
@@ -21,7 +21,7 @@ export function compileRuntimeCssPlan(css){
           const declarations=[];
           for(const decl of node.nodes||[]){
             if(decl.type!=='decl')continue;
-            const expanded=expandRuntimeDeclaration(decl.prop,decl.value);
+            const expanded=expandRuntimeDeclaration(decl.prop,decl.value,{paint});
             for(const [prop,value] of expanded)declarations.push({prop,value,important:!!decl.important,order:++order});
           }
           if(!declarations.length)continue;
@@ -38,6 +38,7 @@ export function compileRuntimeCssPlan(css){
   visit(root.nodes);
   return {
     schema:1,
+    ...(paint?{paint:true}:{}),
     rules,
     maxOrder:order,
     deferredPseudoRules,

@@ -43,7 +43,7 @@ export function resolvePlanStyle(plan,element,env,parentStyle={}){
     for(const d of rule.declarations)apply(d.prop,d.value,d.important,rule.specificity,d.order,0,rule.selector);
   }
   let inlineOrder=Number(plan.maxOrder)||0;
-  for(const d of parseInlineDeclarations(element.getAttribute?.('style')||'')){
+  for(const d of parseInlineDeclarations(element.getAttribute?.('style')||'',{paint:plan.paint===true})){
     apply(d.prop,d.value,d.important,[0,0,0],++inlineOrder,1,'<inline>');
   }
 
