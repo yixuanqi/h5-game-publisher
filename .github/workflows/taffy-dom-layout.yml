@@ -1,4 +1,4 @@
-name: Taffy DOM layout V0.5.4d2a gradient border paint and strict title geometry
+name: Taffy DOM layout V0.5.4d2b radial shadow paint and strict title geometry
 on:
   push:
     branches: ['experiment/v054b-dom-layout']
@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test tests/wechat-taffy-wx-gate.test.mjs tests/wechat-taffy-abi.test.mjs tests/wechat-dom-layout-054b.test.mjs tests/wechat-layout-054c1.test.mjs tests/wechat-layout-054c2.test.mjs tests/wechat-title-audit-054c3.test.mjs tests/wechat-fixed-layout-054c3.test.mjs tests/wechat-single-line-054c3.test.mjs tests/wechat-svg-geometry-054c3.test.mjs tests/wechat-font-line-metrics-054c3.test.mjs tests/wechat-title-geometry-gate-054c3.test.mjs tests/wechat-box-paint-054d1.test.mjs tests/wechat-gradient-border-054d2.test.mjs
+      - run: node --test tests/wechat-taffy-wx-gate.test.mjs tests/wechat-taffy-abi.test.mjs tests/wechat-dom-layout-054b.test.mjs tests/wechat-layout-054c1.test.mjs tests/wechat-layout-054c2.test.mjs tests/wechat-title-audit-054c3.test.mjs tests/wechat-fixed-layout-054c3.test.mjs tests/wechat-single-line-054c3.test.mjs tests/wechat-svg-geometry-054c3.test.mjs tests/wechat-font-line-metrics-054c3.test.mjs tests/wechat-title-geometry-gate-054c3.test.mjs tests/wechat-box-paint-054d1.test.mjs tests/wechat-gradient-border-054d2.test.mjs tests/wechat-radial-shadow-054d2.test.mjs
       - run: |
           rustup toolchain install 1.92.0 --profile minimal
           rustup target add --toolchain 1.92.0 wasm32-unknown-unknown
@@ -52,6 +52,7 @@ jobs:
       - run: node platforms/wechat/ui-layout/original-title-audit.mjs upstream .work/taffy-abi-054a/wx-project/taffy-layout.wasm .work/taffy-abi-054a/original-title-audit.json
       - run: node platforms/wechat/ui-paint/chromium-box-paint-probe.mjs .work/taffy-abi-054a/wx-project/taffy-layout.wasm .work/taffy-abi-054a/box-paint
       - run: node platforms/wechat/ui-paint/chromium-gradient-border-probe.mjs .work/taffy-abi-054a/wx-project/taffy-layout.wasm .work/taffy-abi-054a/gradient-border-paint
+      - run: node platforms/wechat/ui-paint/chromium-radial-shadow-probe.mjs .work/taffy-abi-054a/wx-project/taffy-layout.wasm .work/taffy-abi-054a/radial-shadow-paint
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -71,4 +72,5 @@ jobs:
             .work/taffy-abi-054a/chromium-svg-report.json
             .work/taffy-abi-054a/box-paint/
             .work/taffy-abi-054a/gradient-border-paint/
+            .work/taffy-abi-054a/radial-shadow-paint/
           if-no-files-found: warn
