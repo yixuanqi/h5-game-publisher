@@ -103,6 +103,16 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
     }
     return {style:box,check:{width:m.width,edges:edges.x,whiteSpace}};
   }
+  function blockify(s,parent,isRoot,n,kids){
+    const display=s.display;
+    if(!['inline','inline-block','inline-flex','inline-grid'].includes(display))return s;
+    const outOfFlow=['absolute','fixed'].includes(s.position);
+    const item=parent&&['flex','grid'].includes(parent.style?.display);
+    if(!isRoot&&!outOfFlow&&!item)throw Error('Unsupported inline formatting: '+display);
+    if(display==='inline-block'&&kids.length)throw Error('Unsupported inline-block formatting context with children');
+    const mapped={'inline':'block','inline-block':'block','inline-flex':'flex','inline-grid':'grid'}[display];
+    return {...s,display:mapped};
+  }
   function cssOrder(n){
     const value=String(n?.style?.order??'0').trim();
     if(!/^[+-]?\d+$/.test(value)||!Number.isSafeInteger(Number(value)))throw Error('Invalid layout order: '+value);
@@ -117,6 +127,7 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
     const hidden=parent?.hidden||s.display==='none';
     const record={element:n.element,parent,layoutParent:parent,hidden:!!hidden,handle:null,stableBlock:false,childBases:{},group:parent?.group??null,fixedContainingBlock:!!(parent?.fixedContainingBlock||n.establishesFixedContainingBlock)};records.push(record);
     if(!hidden){
+      s=blockify(s,parent,isRoot,n,kids);
       const textNodes=Array.from(n.element.childNodes??[]).filter(x=>x.nodeType===3&&String(x.textContent??'').trim());
       if(textNodes.length){
         const whiteSpace=n.textStyle?.['white-space']??'normal';
@@ -159,7 +170,8 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
       for(const [p,v] of Object.entries(s)){
         if(p==='order'){cssOrder(n);continue;}
         if(!props.has(p))throw Error('Unmapped layout property '+p);
-        backend.setStyle(record.handle,p,p==='position'&&v==='fixed'?'absolute':normalize(p,v,isRoot,parent,s));
+        try{backend.setStyle(record.handle,p,p==='position'&&v==='fixed'?'absolute':normalize(p,v,isRoot,parent,s));}
+        catch(e){throw Error('Layout '+(n.element.id||n.element.localName||'node')+' '+p+'='+v+': '+e.message);}
       }
     }
     // CSS order affects flex/grid layout, never the actual DOM order.

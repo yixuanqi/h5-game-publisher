@@ -22,3 +22,23 @@ test('normal line overflow fails closed; explicit width is not replaced',()=>{
  assert.throws(()=>createLayoutSnapshot(m,n,viewport,{measureSingleLine:()=>({width:60,height:20})}),/Text wrapping required/);
  assert.ok(m.log.some(x=>x[0]===2&&x[1]==='width'&&x[2]==='50px'));
 });
+
+test('inline-block text control is blockified only in flex or grid item context',()=>{
+ for(const display of ['flex','grid']){
+  const m=mock(80);
+  const tree={element:el(),style:{display},children:[{element:label(),style:{display:'inline-block',width:'80px','box-sizing':'border-box'},textStyle:{'white-space':'nowrap'}}]};
+  createLayoutSnapshot(m,tree,viewport,{measureSingleLine:()=>({width:60,height:20})});
+  assert.ok(m.log.some(x=>x[0]===2&&x[1]==='display'&&x[2]==='block'));
+  assert.equal(tree.children[0].style.display,'inline-block');
+ }
+ const bad={element:el(),style:{display:'block'},children:[{element:label(),style:{display:'inline-block',width:'80px'}}]};
+ assert.throws(()=>createLayoutSnapshot(mock(),bad,viewport,{measureSingleLine:()=>({width:60,height:20})}),/Unsupported inline formatting/);
+});
+test('inline-flex and inline-grid containers blockify without losing inner layout mode',()=>{
+ for(const [input,output] of [['inline-flex','flex'],['inline-grid','grid']]){
+  const m=mock();
+  createLayoutSnapshot(m,{element:el(),style:{display:'flex'},children:[{element:el(),style:{display:input},children:[{element:el(),style:{width:'20px'}}]}]},viewport);
+  assert.ok(m.log.some(x=>x[0]===2&&x[1]==='display'&&x[2]===output));
+ }
+ assert.throws(()=>createLayoutSnapshot(mock(),{element:el(),style:{display:'flex'},children:[{element:el(),style:{display:'inline-block'},children:[{element:el()}]}]},viewport),/Unsupported inline-block formatting context/);
+});
