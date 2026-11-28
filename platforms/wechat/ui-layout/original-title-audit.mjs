@@ -15,7 +15,7 @@ const {loadTaffy}=createRequire(import.meta.url)('./taffy-runtime.cjs');
 const [checkout,wasm,out]=process.argv.slice(2);
 const pin='cdb508594cc610733f248ec5d4123a3b9d954981';
 const git=(...args)=>{const r=spawnSync('git',args,{cwd:checkout,encoding:'utf8'});assert.equal(r.status,0,r.stderr);return r.stdout.trim();};
-const report={stage:'V0.5.4c3b4',scope:'full authored title subtree static mobile state, inventory and attempted host geometry',sourceSha:pin,diagnostic:'fail',fullTitleParity:false,wx:'not-run',releaseReady:false,results:[]};
+const report={stage:'V0.5.4c3b5',scope:'full authored title subtree static mobile state, inventory and attempted host geometry',sourceSha:pin,diagnostic:'fail',fullTitleParity:false,wx:'not-run',releaseReady:false,results:[]};
 let browser,server;
 try{
  assert.equal(git('rev-parse','HEAD'),pin);
@@ -92,10 +92,11 @@ try{
     else if(!k.startsWith('--'))unmapped[k]=v;
    }
    hidden=hidden||style.display==='none';
-   const directText=[...el.childNodes].filter(n=>n.nodeType===3&&String(n.textContent).trim()).map(n=>n.textContent.trim()).join(' ');
+   const directNodes=[...el.childNodes].filter(n=>n.nodeType===3);
+   const directText=directNodes.map(n=>n.textContent).join('').replace(/[\t\n\f\r ]+/g,' ').replace(/^ +| +$/g,'');
    if(!hidden){
     for(const e of r.unsupportedSelectors)issues.push({path:key,kind:'selector',...e});
-    if(directText)issues.push({path:key,kind:'text-measurement-required',mixed:el.children.length>0,nonAscii:/[^\x00-\x7f]/.test(directText)});
+    if(directText)issues.push({path:key,kind:'text-measurement-required',textNodeCount:directNodes.length,logicalRun:directTextRun(el)!==null,mixed:el.children.length>0,nonAscii:/[^\x00-\x7f]/.test(directText)});
     if(['svg','button','input','canvas'].includes(el.localName))issues.push({path:key,kind:'native-or-replaced-element',tag:el.localName});
     if(Object.keys(unmapped).length)issues.push({path:key,kind:'unmapped-style',properties:Object.keys(unmapped)});
    }
@@ -152,5 +153,5 @@ try{
 finally{
  try{assert.equal(git('status','--porcelain','--untracked-files=all'),'');report.sourceIntegrity='pass';}
  catch(e){report.sourceIntegrity='fail';report.diagnostic='fail';report.sourceError=String(e);throw e;}
- finally{if(browser)await browser.close();if(server)await new Promise(ok=>server.close(ok));fs.writeFileSync(out,JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({stage:report.stage,diagnostic:report.diagnostic,fullTitleParity:report.fullTitleParity,sourceIntegrity:report.sourceIntegrity,results:report.results.map(r=>({viewport:r.viewport,nodeCount:r.nodeCount,issues:r.issues.length,attempt:r.attempt.status,error:r.attempt.error,measuredTextRuns:r.textEvidence.measured.length,usedTextRuns:r.textEvidence.used.length,issueKinds:Object.fromEntries([...new Set(r.issues.map(i=>i.kind))].map(k=>[k,r.issues.filter(i=>i.kind===k).length])),issueProperties:[...new Set(r.issues.flatMap(i=>i.properties??[]))]}))}));}
+ finally{if(browser)await browser.close();if(server)await new Promise(ok=>server.close(ok));fs.writeFileSync(out,JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify({stage:report.stage,diagnostic:report.diagnostic,fullTitleParity:report.fullTitleParity,sourceIntegrity:report.sourceIntegrity,results:report.results.map(r=>({viewport:r.viewport,nodeCount:r.nodeCount,issues:r.issues.length,attempt:r.attempt.status,error:r.attempt.error,measuredTextRuns:r.textEvidence.measured.length,usedTextRuns:r.textEvidence.used.length,splitTextRuns:r.issues.filter(i=>i.kind==='text-measurement-required'&&i.textNodeCount>1&&i.logicalRun).map(i=>({path:i.path,textNodeCount:i.textNodeCount})),issueKinds:Object.fromEntries([...new Set(r.issues.map(i=>i.kind))].map(k=>[k,r.issues.filter(i=>i.kind===k).length])),issueProperties:[...new Set(r.issues.flatMap(i=>i.properties??[]))]}))}));}
 }

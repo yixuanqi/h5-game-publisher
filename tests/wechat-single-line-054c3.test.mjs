@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createLayoutSnapshot} from '../platforms/wechat/ui-layout/dom-layout.mjs';
-import {textDescriptor} from '../platforms/wechat/ui-layout/text-metrics.mjs';
+import {textDescriptor,directTextRun} from '../platforms/wechat/ui-layout/text-metrics.mjs';
 const viewport={width:800,height:400};
 const el=()=>({childNodes:[]});
 const label=()=>({localName:'button',id:'label',childNodes:[{nodeType:3,textContent:'灰钟残誓'}]});
@@ -41,4 +41,26 @@ test('inline-flex and inline-grid containers blockify without losing inner layou
   assert.ok(m.log.some(x=>x[0]===2&&x[1]==='display'&&x[2]===output));
  }
  assert.throws(()=>createLayoutSnapshot(mock(),{element:el(),style:{display:'flex'},children:[{element:el(),style:{display:'inline-block'},children:[{element:el()}]}]},viewport),/Unsupported inline-block formatting context/);
+});
+
+test('logical text preserves entity characters and whitespace across adjacent nodes and comments',()=>{
+ const t=textContent=>({nodeType:3,textContent});
+ const n={children:[],childNodes:[t('  键鼠 / Xbox '),t('&'),{nodeType:8,textContent:'comment'},t(' PS  手柄  ')]};
+ assert.equal(directTextRun(n),'键鼠 / Xbox & PS 手柄');
+ assert.equal(directTextRun({childNodes:[t('A'),t('&'),t('B')]}),'A&B');
+ assert.equal(directTextRun({childNodes:[t('A'),t('\u00a0'),t('B')]}),'A\u00a0B');
+ assert.equal(directTextRun({childNodes:[t('\u00a0')]}),'\u00a0');
+ assert.equal(directTextRun({childNodes:[t('  \n ')]}),null);
+ assert.equal(directTextRun({childNodes:[t('a'),{nodeType:1,textContent:'b'}]}),null);
+ assert.equal(n.childNodes.length,4);
+});
+test('adjacent nodes are measured exactly once; mixed markup remains rejected',()=>{
+ const n={localName:'span',childNodes:[{nodeType:3,textContent:'Xbox '},{nodeType:3,textContent:'&'},{nodeType:3,textContent:' PS'}]};
+ const root={element:el(),style:{display:'flex'},children:[{element:n,style:{width:'80px'},textStyle:{'white-space':'nowrap'}}]};
+ const measured=[];
+ createLayoutSnapshot(mock(),root,viewport,{measureSingleLine:({text})=>{measured.push(text);return {width:60,height:20};}});
+ assert.deepEqual(measured,['Xbox & PS']);
+ assert.equal(n.childNodes.length,3);
+ const mixed={...root.children[0],element:{...n,childNodes:[...n.childNodes,{nodeType:1}]}};
+ assert.throws(()=>createLayoutSnapshot(mock(),{...root,children:[mixed]},viewport,{measureSingleLine:()=>({width:60,height:20})}),/mixed content/);
 });

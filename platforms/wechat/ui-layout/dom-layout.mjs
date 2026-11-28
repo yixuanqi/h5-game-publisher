@@ -1,6 +1,6 @@
 /** Bounded geometry adapter. No painting or game-specific selectors. */
 import {evaluateCssLength} from './css-length.mjs';
-import {validateSingleLineMetrics} from './text-metrics.mjs';
+import {validateSingleLineMetrics,directTextRun} from './text-metrics.mjs';
 export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=viewport.width,rootContainingHeight=viewport.height,safeArea,measureTextLeaf,measureSingleLine}={}){
   // Bounded static geometry; publish only after the complete tree computes.
   const rects=new Map(),records=[],seen=new Set(),fixedGroups=[];
@@ -186,25 +186,26 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
     const record={element:n.element,parent,layoutParent:parent,hidden:!!hidden,handle:null,stableBlock:false,childBases:{},group:parent?.group??null,fixedContainingBlock:!!(parent?.fixedContainingBlock||n.establishesFixedContainingBlock)};records.push(record);
     if(!hidden){
       s=fillRoot(blockify(s,parent,isRoot,n,kids),isRoot,parent);
-      const textNodes=Array.from(n.element.childNodes??[]).filter(x=>x.nodeType===3&&String(x.textContent??'').trim());
+      const textNodes=Array.from(n.element.childNodes??[]).filter(x=>x.nodeType===3&&/[^\t\n\f\r ]/.test(String(x.textContent??'')));
       if(textNodes.length){
+        const text=directTextRun(n.element);
+        const identity=n.element.id||n.element.getAttribute?.('data-i18n')||n.element.className||n.element.localName||'leaf';
+        if(!text||kids.length)throw Error('Intrinsic text measurement required: unsupported text leaf '+identity+' (mixed content)');
         const whiteSpace=n.textStyle?.['white-space']??'normal';
         const intrinsic=s.width==='max-content'&&whiteSpace==='nowrap';
         const constrained=whiteSpace==='normal'&&stableBlock(s,parent,isRoot)&&
           !['min-width','max-width','min-height','max-height'].some(p=>s[p]&&!['auto','none'].includes(s[p]));
-        if(typeof measureSingleLine==='function'&&!kids.length&&textNodes.length===1&&!intrinsic&&!constrained){
-          const text=String(textNodes[0].textContent).replace(/[\t\n\f\r ]+/g,' ').trim();
+        if(typeof measureSingleLine==='function'&&!intrinsic&&!constrained){
           try{const measured=measuredSingleLine(n,s,parent,isRoot,text);s=measured.style;record.textCheck=measured.check;}
           catch(e){throw Error('Single-line text '+(n.element.id||n.element.localName||'leaf')+': '+e.message);}
         }else{
-        if(typeof measureTextLeaf!=='function'||kids.length||textNodes.length!==1||
+        if(typeof measureTextLeaf!=='function'||
            (s.height&&s.height!=='auto')||
            (s['box-sizing']&&s['box-sizing']!=='content-box')||
            (s.display&&s.display!=='block')||(!intrinsic&&!constrained))
-          throw Error('Intrinsic text measurement required: unsupported text leaf');
+          throw Error('Intrinsic text measurement required: unsupported text leaf '+identity);
         const maxWidth=constrained?definiteSize(s,'width',isRoot,parent):undefined;
         if(constrained&&!Number.isFinite(maxWidth))throw Error('Unresolved text width constraint');
-        const text=String(textNodes[0].textContent).replace(/[\t\n\f\r ]+/g,' ').trim();
         const metrics=measureTextLeaf({element:n.element,text,style:n.textStyle,viewport,maxWidth});
         if(![metrics?.width,metrics?.height].every(v=>Number.isFinite(v)&&v>=0&&v<=1e6))throw Error('Invalid text metrics');
         // The provider measures content, not the containing box. Preserve the

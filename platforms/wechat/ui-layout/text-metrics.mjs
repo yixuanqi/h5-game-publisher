@@ -17,9 +17,14 @@ export function textDescriptor(text,style={},viewport){
  return {text:transform==='uppercase'?text.toUpperCase():transform==='lowercase'?text.toLowerCase():text,font:weight+' '+size+'px '+family,letterSpacing:spacing,lineHeight};
 }
 export function directTextRun(el){
- const nodes=Array.from(el.childNodes??[]).filter(n=>n.nodeType===3&&String(n.textContent??'').trim());
- if(nodes.length!==1||el.children?.length)return null;
- return String(nodes[0].textContent).replace(/[\t\n\f\r ]+/g,' ').trim();
+ const nodes=Array.from(el.childNodes??[]);
+ // Entity decoding and comments can split a logical text run into adjacent
+ // Text nodes. Concatenate BEFORE CSS whitespace collapse, without inserting
+ // artificial spaces. Do not mutate the source DOM or flatten mixed markup.
+ if(el.children?.length||nodes.some(n=>![3,8].includes(n.nodeType)))return null;
+ const text=nodes.filter(n=>n.nodeType===3).map(n=>String(n.textContent??'')).join('')
+   .replace(/[\t\n\f\r ]+/g,' ').replace(/^ +| +$/g,'');
+ return text||null;
 }
 // A diagnostic single-line provider may support CJK glyph advances, but
 // normal wrapping is only accepted if the final content box fits the run.
