@@ -16,8 +16,11 @@ assert.equal(git('status','--porcelain','--untracked-files=all'),'');
 const source=path.join(checkout,'docs/ashen-bell-vow');
 const html=fs.readFileSync(path.join(source,'index.html'),'utf8'),css=fs.readFileSync(path.join(source,'styles.css'),'utf8');
 const plan=compileRuntimeCssPlan(css);
+const diagnostics={stage:'V0.5.4b3',sourceSha:pin,host:'fail',wx:'not-run',releaseReady:false,visualParity:false,deferredPseudoElements:plan.skippedPseudoElements,deferredPseudoRuleCount:plan.deferredPseudoRules.length};
+const writeReport=()=>fs.writeFileSync(out,JSON.stringify(diagnostics,null,2)+'\n');
+try{
 const backend=await loadTaffy({mode:'host',bytes:fs.readFileSync(wasm)});
-const results=[];
+const results=[];diagnostics.results=results;
 const env={width:300,height:100,pointer:'coarse'};
 // Real WASM through CSS compiler and DOM cascade. Empty leaves only.
 const fixture=parseHTML('<html><body><div id="root"><div id="a"></div><div id="b"></div></div></body></html>').document;
@@ -27,7 +30,7 @@ function fixtureGeometry(css){
  const fixturePlan=compileRuntimeCssPlan(css);
  function visit(el,parentStyle={}){
   const r=resolvePlanStyle(fixturePlan,el,env,parentStyle);
-  assert.equal(r.unsupportedSelectors.length,0);
+  assert.equal(r.unsupportedSelectors.length,0,JSON.stringify({element:el.localName||el.tagName,selectors:r.unsupportedSelectors}));
   return {element:el,style:r.values,children:[...el.children].map(c=>visit(c,r.values))};
  }
  const snap=createLayoutSnapshot(backend,visit(fixtureRoot),env);
@@ -36,6 +39,7 @@ function fixtureGeometry(css){
 const orderActual=fixtureGeometry('#root{display:flex;width:300px;height:100px}#a{width:40px;order:2}#b{width:60px;order:-1}');
 const gridActual=fixtureGeometry('#root{display:grid;width:300px;height:100px;grid-template-columns:100px 200px;grid-template-rows:100px}#a{grid-column:2;grid-row:1}#b{grid-column:1;grid-row:1}');
 const fixtures=[{id:'flex-order',actual:orderActual,expected:{ax:60,bx:0,aw:40,bw:60}},{id:'grid-placement',actual:gridActual,expected:{ax:100,bx:0,aw:200,bw:100}}];
+diagnostics.fixtures=fixtures;
 for(const f of fixtures){f.maxDeltaPx=Math.max(...Object.keys(f.expected).map(k=>Math.abs(f.expected[k]-f.actual[k])));assert.ok(f.maxDeltaPx<=0.5,f.id+' deviation '+f.maxDeltaPx);}
 
 for(const env of [{width:844,height:390,pointer:'coarse'},{width:640,height:360,pointer:'coarse'}]){
@@ -43,7 +47,7 @@ for(const env of [{width:844,height:390,pointer:'coarse'},{width:640,height:360,
  const root=document.querySelector('.title-hero-column');
  assert.ok(root);
  const actualChildren=[...root.children];assert.equal(actualChildren.length,2);assert.ok(actualChildren[0].matches('.title-brand-col'));assert.ok(actualChildren[1].matches('.title-action-col'));
- function styleOf(el){const parent=el.parentElement;const r=resolvePlanStyle(plan,el,env,parent?styleOf(parent):{});assert.equal(r.unsupportedSelectors.length,0);return r.values;}
+ function styleOf(el){const parent=el.parentElement;const r=resolvePlanStyle(plan,el,env,parent?styleOf(parent):{});assert.equal(r.unsupportedSelectors.length,0,JSON.stringify({element:el.localName||el.tagName,selectors:r.unsupportedSelectors}));return r.values;}
  const s=styleOf(root);
  assert.equal(s.display,'grid');
  // Only the horizontal track geometry is under test. Retain authored width and track
@@ -66,5 +70,13 @@ for(const env of [{width:844,height:390,pointer:'coarse'},{width:640,height:360,
  assert.ok(delta<=0.5,'Title track geometry deviation '+delta);
 }
 assert.equal(git('status','--porcelain','--untracked-files=all'),'');
-const report={stage:'V0.5.4b2',sourceSha:pin,scope:'authored-title-horizontal-track-projection-empty-leaves',host:'pass',wx:'not-run',releaseReady:false,visualParity:false,fixtures,results};
-fs.writeFileSync(out,JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report));
+diagnostics.scope='authored-title-horizontal-track-projection-empty-leaves';
+diagnostics.host='pass';
+}catch(e){
+ diagnostics.error=String(e.stack||e);
+ throw e;
+}finally{
+ try{assert.equal(git('status','--porcelain','--untracked-files=all'),'');diagnostics.sourceIntegrity='pass';}
+ catch(e){diagnostics.sourceIntegrity='fail';diagnostics.host='fail';diagnostics.sourceError=String(e);throw e;}
+ finally{writeReport();console.log(JSON.stringify(diagnostics));}
+}

@@ -68,7 +68,7 @@ export function resolvePlanTree(plan,root,env){
   const cache=new WeakMap();
   function visit(el,parentStyle={}){
     const resolved=resolvePlanStyle(plan,el,env,parentStyle);
-    if(resolved.unsupportedSelectors.length)throw Error('Unsupported runtime selector: '+JSON.stringify(resolved.unsupportedSelectors.slice(0,3)));
+    if(resolved.unsupportedSelectors.length)throw Error('Unsupported runtime selector: '+JSON.stringify(resolved.unsupportedSelectors));
     cache.set(el,resolved.values);
     return {
       element:el,

@@ -1,17 +1,21 @@
 import postcss from 'postcss';
 import {calculate} from 'specificity';
 import {expandRuntimeDeclaration} from '../runtime/css-declarations.mjs';
+import {classifyPseudoElement} from './pseudo-element-policy.mjs';
 
 const allowedAtRules=new Set(['keyframes','-webkit-keyframes','font-face','charset']);
 
 export function compileRuntimeCssPlan(css){
-  const root=postcss.parse(String(css)),rules=[],skippedPseudoElements=[];let order=0;
+  const root=postcss.parse(String(css)),rules=[],skippedPseudoElements=[],deferredPseudoRules=[];let order=0;
   function visit(nodes,media=[]){
     for(const node of nodes){
       if(node.type==='rule'){
         for(const selector of node.selectors){
-          if(/::(?:before|after|first-letter|first-line)\b/i.test(selector)){
+          const pseudo=classifyPseudoElement(selector);
+          if(pseudo){
             skippedPseudoElements.push(selector);
+            // Preserve authored declaration text and media for later paint work.
+            deferredPseudoRules.push({selector,pseudo,media:[...media],declarations:(node.nodes||[]).filter(d=>d.type==='decl').map(d=>({prop:d.prop,value:d.value,important:!!d.important}))});
             continue;
           }
           const declarations=[];
@@ -36,6 +40,7 @@ export function compileRuntimeCssPlan(css){
     schema:1,
     rules,
     maxOrder:order,
+    deferredPseudoRules,
     skippedPseudoElements:[...new Set(skippedPseudoElements)].sort()
   };
 }
