@@ -2,7 +2,7 @@ import {mediaMatches} from '../layout/cascade.mjs';
 import {parseInlineDeclarations} from './css-declarations.mjs';
 
 const inheritedProps=new Set([
-  'font-family','font-size','font-weight','line-height','letter-spacing','text-align','text-transform','color'
+  'font-family','font-size','font-weight','line-height','letter-spacing','text-align','text-transform','color','white-space'
 ]);
 
 function better(a,b){

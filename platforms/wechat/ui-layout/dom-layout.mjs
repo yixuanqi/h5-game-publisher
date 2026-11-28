@@ -1,6 +1,7 @@
 /** Bounded geometry adapter. No painting or game-specific selectors. */
 import {evaluateCssLength} from './css-length.mjs';
-export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=viewport.width,rootContainingHeight=viewport.height,safeArea,measureTextLeaf}={}){
+import {validateSingleLineMetrics} from './text-metrics.mjs';
+export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=viewport.width,rootContainingHeight=viewport.height,safeArea,measureTextLeaf,measureSingleLine}={}){
   // Bounded static geometry; publish only after the complete tree computes.
   const rects=new Map(),records=[],seen=new Set(),fixedGroups=[];
   const props=new Set('display width height min-width min-height max-width max-height column-gap row-gap flex-direction flex-wrap justify-content align-items align-self flex-grow flex-shrink flex-basis grid-template-columns grid-template-rows position top right bottom left padding-top padding-right padding-bottom padding-left margin-top margin-right margin-bottom margin-left border-top-width border-right-width border-bottom-width border-left-width box-sizing aspect-ratio grid-column-start grid-column-end grid-row-start grid-row-end'.split(' '));
@@ -72,6 +73,36 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
     const group={handle,records:[],width:viewport.width,height:viewport.height};
     fixedGroups.push(group);return group;
   }
+  function textBoxEdges(s,isRoot,parent){
+    const edge=p=>{
+      const raw=s[p]??'0px',v=normalize(p,raw,isRoot,parent,s);
+      if(!/^(?:\d+(?:\.\d*)?|\.\d+)px$/.test(v))throw Error('Unresolved text box edge '+p+': '+v);
+      return Number.parseFloat(v);
+    };
+    const axis=(a,b)=>edge('padding-'+a)+edge('padding-'+b)+edge('border-'+a+'-width')+edge('border-'+b+'-width');
+    return {x:axis('left','right'),y:axis('top','bottom')};
+  }
+  function measuredSingleLine(n,s,parent,isRoot,text){
+    const whiteSpace=n.textStyle?.['white-space']??'normal';
+    if(!['normal','nowrap'].includes(whiteSpace)||!['block',undefined].includes(s.display)||
+       (s.position&&!['relative','static'].includes(s.position))||
+       (s.height&&s.height!=='auto')||s['aspect-ratio']&&s['aspect-ratio']!=='auto')
+      throw Error('Unsupported single-line text leaf');
+    if(n.element.localName==='input'||n.element.localName==='textarea')throw Error('Unsupported editable text control');
+    const m=validateSingleLineMetrics(measureSingleLine({element:n.element,text,style:n.textStyle??{},viewport}));
+    const edges=textBoxEdges(s,isRoot,parent),borderBox=s['box-sizing']==='border-box';
+    const box={...s,height:(m.height+(borderBox?edges.y:0))+'px'};
+    // Only auto/max-content leaves with an explicit non-stretch policy get
+    // intrinsic width. Otherwise Taffy owns authored or stretched width.
+    if(!s.width||s.width==='auto'||s.width==='max-content'){
+      const parentStyle=parent?.style??{};
+      const align=s['align-self']??parentStyle['align-items']??'stretch';
+      const nonStretch=parentStyle.display==='flex'&&
+        (['row','row-reverse',undefined].includes(parentStyle['flex-direction'])||['flex-start','flex-end','center','start','end'].includes(align));
+      if(s.width==='max-content'||nonStretch)box.width=(m.width+(borderBox?edges.x:0))+'px';
+    }
+    return {style:box,check:{width:m.width,edges:edges.x,whiteSpace}};
+  }
   function cssOrder(n){
     const value=String(n?.style?.order??'0').trim();
     if(!/^[+-]?\d+$/.test(value)||!Number.isSafeInteger(Number(value)))throw Error('Invalid layout order: '+value);
@@ -92,6 +123,11 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
         const intrinsic=s.width==='max-content'&&whiteSpace==='nowrap';
         const constrained=whiteSpace==='normal'&&stableBlock(s,parent,isRoot)&&
           !['min-width','max-width','min-height','max-height'].some(p=>s[p]&&!['auto','none'].includes(s[p]));
+        if(typeof measureSingleLine==='function'&&!kids.length&&textNodes.length===1&&!intrinsic&&!constrained){
+          const text=String(textNodes[0].textContent).replace(/[\t\n\f\r ]+/g,' ').trim();
+          try{const measured=measuredSingleLine(n,s,parent,isRoot,text);s=measured.style;record.textCheck=measured.check;}
+          catch(e){throw Error('Single-line text '+(n.element.id||n.element.localName||'leaf')+': '+e.message);}
+        }else{
         if(typeof measureTextLeaf!=='function'||kids.length||textNodes.length!==1||
            (s.height&&s.height!=='auto')||
            (s['box-sizing']&&s['box-sizing']!=='content-box')||
@@ -105,7 +141,9 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
         // The provider measures content, not the containing box. Preserve the
         // authored width for wrapping text; Taffy still owns padding/borders.
         s={...s,...(intrinsic?{width:metrics.width+'px'}:{}),height:metrics.height+'px'};
+        }
       }
+      record.style=s;
       record.stableBlock=stableBlock(s,parent,isRoot);
       if(record.stableBlock){
         record.childBases={width:definiteSize(s,'width',isRoot,parent),height:definiteSize(s,'height',isRoot,parent)};
@@ -138,6 +176,7 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
     function capture(r){
       const local=backend.rect(r.handle),p=r.layoutParent?rects.get(r.layoutParent.element):{x:0,y:0};
       if(![local.x,local.y,local.width,local.height].every(Number.isFinite)||local.width<0||local.height<0)throw Error('Invalid backend geometry');
+      if(r.textCheck?.whiteSpace==='normal'&&local.width-r.textCheck.edges+0.02<r.textCheck.width)throw Error('Text wrapping required: '+(r.element.id||r.element.localName||'leaf'));
       rects.set(r.element,Object.freeze({x:p.x+local.x,y:p.y+local.y,width:local.width,height:local.height}));
     }
     for(const r of records)if(r.hidden)rects.set(r.element,Object.freeze({x:0,y:0,width:0,height:0}));
