@@ -20,7 +20,7 @@ test('hidden subtree never sends unsupported descendant styles to backend',()=>{
  assert.equal(s.nodeCount,3);assert.deepEqual(s.rect(c),{x:0,y:0,width:0,height:0});
 });
 test('unsupported style, direct text, and unresolved expression fail closed and reset',()=>{
- for(const [style,element] of [[{order:'2.5'},el()],[{width:'calc(100% - 1px)'},el()],[{}, {childNodes:[{nodeType:3,textContent:'text'}]}]]){
+ for(const [style,element] of [[{order:'2.5'},el()],[{width:'calc(100% - 1em)'},el()],[{}, {childNodes:[{nodeType:3,textContent:'text'}]}]]){
  const m=mock();assert.throws(()=>createLayoutSnapshot(m,{element,style},{width:800,height:390}));assert.deepEqual(m.log.at(-1),['reset']);
  }
 });

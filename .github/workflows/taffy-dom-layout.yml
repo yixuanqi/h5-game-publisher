@@ -1,4 +1,4 @@
-name: Taffy DOM layout V0.5.4b diagnostic
+name: Taffy DOM layout V0.5.4c1 diagnostic
 on:
   push:
     branches: ['experiment/v054b-dom-layout']
@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test tests/wechat-taffy-wx-gate.test.mjs tests/wechat-taffy-abi.test.mjs tests/wechat-dom-layout-054b.test.mjs
+      - run: node --test tests/wechat-taffy-wx-gate.test.mjs tests/wechat-taffy-abi.test.mjs tests/wechat-dom-layout-054b.test.mjs tests/wechat-layout-054c1.test.mjs
       - run: |
           rustup toolchain install 1.92.0 --profile minimal
           rustup target add --toolchain 1.92.0 wasm32-unknown-unknown
@@ -33,13 +33,15 @@ jobs:
           path: upstream
           sparse-checkout: docs/ashen-bell-vow
           persist-credentials: false
-      - run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund linkedom@0.18.15 postcss@8.5.6 specificity@1.0.0
+      - run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund linkedom@0.18.15 postcss@8.5.6 specificity@1.0.0 playwright@1.56.1
+      - run: npx playwright install --with-deps chromium
       - run: node --check platforms/wechat/original-entry/css-plan-build.mjs
       - run: node --test tests/wechat-css-plan-054b2.test.mjs tests/wechat-css-pseudo-054b3.test.mjs
       - run: |
           mkdir -p .work
           node platforms/wechat/ui-layout/taffy-build.mjs vendor-taffy .work/taffy-abi-054a
           node platforms/wechat/ui-layout/title-layout-probe.mjs upstream .work/taffy-abi-054a/wx-project/taffy-layout.wasm .work/taffy-abi-054a/title-layout-report.json
+      - run: node platforms/wechat/ui-layout/chromium-layout-probe.mjs .work/taffy-abi-054a/wx-project/taffy-layout.wasm .work/taffy-abi-054a/chromium-layout-report.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -48,4 +50,5 @@ jobs:
             .work/taffy-abi-054a/report.json
             .work/taffy-abi-054a/title-layout-report.json
             .work/taffy-abi-054a/Cargo.lock
+            .work/taffy-abi-054a/chromium-layout-report.json
           if-no-files-found: warn
