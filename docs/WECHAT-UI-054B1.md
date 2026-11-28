@@ -1,0 +1,7 @@
+# V0.5.4b1 — DOM/CSS geometry integration diagnostic
+
+Based on host-green 4fdfb41 / run 46085158993 (8/8; max delta 0.000020751953 px). WX native gate remains unverified. Standalone diagnostic branch, do not merge; original game and main/Canvas branch remain untouched. Exact CSS plan files are copied from main 391b977aa7f35b8e24205903a622366a616a4e0f.
+
+Generic adapter consumes a geometry-only resolved tree, rejects unmapped properties, unresolved expressions and unmeasured direct text, accumulates parent-relative coordinates, removes hidden subtree from geometry, resets backend on success/failure and publishes only immutable complete rectangles. The title probe resolves original authored CSS against actual original DOM selectors at two coarse-pointer landscape viewports, then explicitly projects only horizontal title tracks into an empty-leaf fixture. Root containing width is the test viewport, not the actual full title shell. Analytical track oracle only, not Chromium/live UI parity. No paint, text, pseudo-elements, SVG, scroll, events, performance, full-game or native device claims. Next: complete style mapping/intrinsic text and compare full original subtree with Chromium; then Canvas paint integration behind native WASM gate.
+
+CI must pass all existing ABI tests and the new adapter tests before executing actual WASM and source probe. The new workflow is branch-specific and does not run Android. No production publishing.

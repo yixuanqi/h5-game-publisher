@@ -1,0 +1,49 @@
+name: Taffy DOM layout V0.5.4b diagnostic
+on:
+  push:
+    branches: ['experiment/v054b-dom-layout']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test tests/wechat-taffy-wx-gate.test.mjs tests/wechat-taffy-abi.test.mjs tests/wechat-dom-layout-054b.test.mjs
+      - run: |
+          rustup toolchain install 1.92.0 --profile minimal
+          rustup target add --toolchain 1.92.0 wasm32-unknown-unknown
+      - uses: actions/checkout@v4
+        with:
+          repository: DioxusLabs/taffy
+          ref: 497de49c200daee81a18ce627bec98d5340ae57a
+          path: vendor-taffy
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: yixuanqi/PhotoGallery
+          ref: cdb508594cc610733f248ec5d4123a3b9d954981
+          path: upstream
+          sparse-checkout: docs/ashen-bell-vow
+          persist-credentials: false
+      - run: npm install --no-save --no-package-lock --ignore-scripts --no-audit --no-fund linkedom@0.18.15 postcss@8.5.6 specificity@1.0.0
+      - run: |
+          mkdir -p .work
+          node platforms/wechat/ui-layout/taffy-build.mjs vendor-taffy .work/taffy-abi-054a
+          node platforms/wechat/ui-layout/title-layout-probe.mjs upstream .work/taffy-abi-054a/wx-project/taffy-layout.wasm .work/taffy-abi-054a/title-layout-report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: taffy-dom-layout-evidence-NOT-RELEASE
+          path: |
+            .work/taffy-abi-054a/report.json
+            .work/taffy-abi-054a/title-layout-report.json
+            .work/taffy-abi-054a/Cargo.lock
+          if-no-files-found: warn
