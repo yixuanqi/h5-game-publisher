@@ -1,0 +1,5 @@
+# V0.5.4b2 — CSS plan and item placement integration
+
+Base: experiment/v054b-dom-layout at 325fd1f961ed54fe6897548f1d684ad37599a243. Run 46088984067 completed ABI geometry but failed importing css-plan-build.mjs (invalid order:++). Repair declaration ordering and gate compiler/cascade tests before WASM build. Expand numeric Grid placement shorthands into longhands before cascade; preserve grid-template-rows; order flex/grid items by integer CSS order with stable DOM-index ties without moving actual DOM nodes. Non-integer order and unsupported named shorthand placements fail closed.
+
+Acceptance: existing ABI and snapshot tests, CSS compiler/cascade tests, real Taffy host fixtures for flex order and explicit Grid placement, existing two authored title horizontal-track projections <=0.5 px. Exact upstream v46.1 source SHA remains pinned; no game writes. Diagnostics only: no full subtree/Chromium paint parity, text/intrinsic metrics, native WXWebAssembly, release artifact, or device acceptance asserted. CI results determine status. Do not merge or publish production.

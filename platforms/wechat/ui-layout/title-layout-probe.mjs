@@ -18,6 +18,26 @@ const html=fs.readFileSync(path.join(source,'index.html'),'utf8'),css=fs.readFil
 const plan=compileRuntimeCssPlan(css);
 const backend=await loadTaffy({mode:'host',bytes:fs.readFileSync(wasm)});
 const results=[];
+const env={width:300,height:100,pointer:'coarse'};
+// Real WASM through CSS compiler and DOM cascade. Empty leaves only.
+const fixture=parseHTML('<html><body><div id="root"><div id="a"></div><div id="b"></div></div></body></html>').document;
+const fixtureRoot=fixture.querySelector('#root');
+const fixtureA=fixture.querySelector('#a'),fixtureB=fixture.querySelector('#b');
+function fixtureGeometry(css){
+ const fixturePlan=compileRuntimeCssPlan(css);
+ function visit(el,parentStyle={}){
+  const r=resolvePlanStyle(fixturePlan,el,env,parentStyle);
+  assert.equal(r.unsupportedSelectors.length,0);
+  return {element:el,style:r.values,children:[...el.children].map(c=>visit(c,r.values))};
+ }
+ const snap=createLayoutSnapshot(backend,visit(fixtureRoot),env);
+ return {ax:snap.rect(fixtureA).x,bx:snap.rect(fixtureB).x,aw:snap.rect(fixtureA).width,bw:snap.rect(fixtureB).width};
+}
+const orderActual=fixtureGeometry('#root{display:flex;width:300px;height:100px}#a{width:40px;order:2}#b{width:60px;order:-1}');
+const gridActual=fixtureGeometry('#root{display:grid;width:300px;height:100px;grid-template-columns:100px 200px;grid-template-rows:100px}#a{grid-column:2;grid-row:1}#b{grid-column:1;grid-row:1}');
+const fixtures=[{id:'flex-order',actual:orderActual,expected:{ax:60,bx:0,aw:40,bw:60}},{id:'grid-placement',actual:gridActual,expected:{ax:100,bx:0,aw:200,bw:100}}];
+for(const f of fixtures){f.maxDeltaPx=Math.max(...Object.keys(f.expected).map(k=>Math.abs(f.expected[k]-f.actual[k])));assert.ok(f.maxDeltaPx<=0.5,f.id+' deviation '+f.maxDeltaPx);}
+
 for(const env of [{width:844,height:390,pointer:'coarse'},{width:640,height:360,pointer:'coarse'}]){
  const {document}=parseHTML(html);document.body.classList.add('is-mobile');
  const root=document.querySelector('.title-hero-column');
@@ -46,5 +66,5 @@ for(const env of [{width:844,height:390,pointer:'coarse'},{width:640,height:360,
  assert.ok(delta<=0.5,'Title track geometry deviation '+delta);
 }
 assert.equal(git('status','--porcelain','--untracked-files=all'),'');
-const report={stage:'V0.5.4b1',sourceSha:pin,scope:'authored-title-horizontal-track-projection-empty-leaves',host:'pass',wx:'not-run',releaseReady:false,visualParity:false,results};
+const report={stage:'V0.5.4b2',sourceSha:pin,scope:'authored-title-horizontal-track-projection-empty-leaves',host:'pass',wx:'not-run',releaseReady:false,visualParity:false,fixtures,results};
 fs.writeFileSync(out,JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report));

@@ -4,7 +4,7 @@ const extras=[
   'height','min-height','max-height','justify-content','flex-wrap','flex-grow','flex-shrink','flex-basis',
   'font-family','font-size','font-weight','line-height','letter-spacing','text-align','text-transform',
   'opacity','visibility','pointer-events','overflow-x','overflow-y','background','background-color','color',
-  'border-radius','z-index','transform','transform-origin','white-space','grid-column','grid-row','aspect-ratio','order','top','bottom'
+  'border-radius','z-index','transform','transform-origin','white-space','grid-column-start','grid-column-end','grid-row-start','grid-row-end','grid-template-rows','aspect-ratio','order','top','bottom'
 ];
 export const runtimeProperties=new Set([...boxProperties,...extras]);
 
@@ -27,6 +27,13 @@ export function expandRuntimeDeclaration(prop,value){
   if(prop==='flex')return flex(value);
   if(prop==='inset'){
     return four(value).map((v,i)=>[['top','right','bottom','left'][i],v]);
+  }
+  if(prop==='grid-column'||prop==='grid-row'){
+    // Expand before cascade so shorthand resets both longhands in source order.
+    const a=value.split('/').map(x=>x.trim());
+    const valid=x=>/^(?:auto|[+-]?\d+|span\s+[1-9]\d*)$/i.test(x)&&!/^[-+]?0+$/.test(x);
+    if(a.length>2||!a.every(valid))throw Error('Unsupported grid placement: '+value);
+    return [[prop+'-start',a[0]],[prop+'-end',a[1]??'auto']];
   }
   if(prop==='overflow')return [['overflow-x',value],['overflow-y',value]];
   if(prop==='flex-flow'){

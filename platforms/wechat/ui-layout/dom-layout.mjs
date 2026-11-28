@@ -22,6 +22,11 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
     if(p==='aspect-ratio'){const m=v.match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)$/);if(m&&Number(m[2])>0)return String(Number(m[1])/Number(m[2]));}
     return v;
   }
+  function cssOrder(n){
+    const value=String(n?.style?.order??'0').trim();
+    if(!/^[+-]?\d+$/.test(value)||!Number.isSafeInteger(Number(value)))throw Error('Invalid layout order: '+value);
+    return Number(value);
+  }
   function visit(n,parent,isRoot=false,depth=0){
     if(depth>128||records.length>=8192||!n?.element||seen.has(n.element))throw Error('Invalid or oversized layout tree');
     seen.add(n.element);
@@ -35,12 +40,17 @@ export function createLayoutSnapshot(backend,tree,viewport,{rootContainingWidth=
       record.handle=backend.createNode();
       if(parent)backend.append(parent.handle,record.handle);
       for(const [p,v] of Object.entries(s)){
-        if(p==='order'&&String(v).trim()==='0')continue;
+        if(p==='order'){cssOrder(n);continue;}
         if(!props.has(p))throw Error('Unmapped layout property '+p);
         backend.setStyle(record.handle,p,normalize(p,v,isRoot));
       }
     }
-    for(const child of kids)visit(child,record,false,depth+1);
+    // CSS order affects flex/grid layout, never the actual DOM order.
+    const ordered=!hidden&&['flex','grid'].includes(s.display)
+      ? kids.map((child,index)=>({child,index,order:child?.style?.display==='none'?0:cssOrder(child)}))
+        .sort((a,b)=>a.order-b.order||a.index-b.index).map(x=>x.child)
+      : kids;
+    for(const child of ordered)visit(child,record,false,depth+1);
     return record;
   }
   backend.reset();
